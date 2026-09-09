@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WallStreet — the floor</title>
+<style>
+  :root {
+    --carpet:      #6f7d8c;   /* institutional loop pile, blue-grey */
+    --carpet-dark: #5d6a78;
+    --aisle:       #7e8b99;
+    --panel:       #b9b2a4;   /* cubicle fabric */
+    --panel-top:   #cfc8ba;
+    --panel-edge:  #97907f;
+    --desk:        #d9cdb8;   /* laminate */
+    --desk-edge:   #b8a98f;
+    --ink:         #23282e;
+    --screen-off:  #2b3138;
+    --paper:       #f4f1ea;
+    --skin:        #d8a882;
+    --skin-2:      #a9704a;
+    --skin-3:      #f0cba6;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #2f363d; font: 14px/1.5 ui-monospace, Menlo, Consolas, monospace; color: #e8e4dc; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 18px 20px 40px; }
+  h1 { font: 600 20px/1.2 "Iowan Old Style", Palatino, Georgia, serif; margin: 0 0 4px; letter-spacing: .01em; }
+  .sub { color: #9aa4ae; font-size: 12.5px; margin-bottom: 14px; }
+  .stage { position: relative; border-radius: 10px; overflow: hidden;
+           box-shadow: 0 2px 4px rgba(0,0,0,.2), 0 24px 50px -30px rgba(0,0,0,.8); cursor: grab; }
+  .stage.drag { cursor: grabbing; }
+  canvas { display: block; width: 100%; height: auto; }
+  .tip { position: absolute; pointer-events: none; background: #1b2026ee; border: 1px solid #3d454e;
+         border-radius: 8px; padding: 8px 10px; font-size: 12px; line-height: 1.45; min-width: 168px;
+         opacity: 0; transition: opacity .12s; }
+  .tip b { color: #fff; }
+  .tip .m { color: #9aa4ae; }
+  .tip .s { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+  .legend { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 12px; font-size: 12px; color: #9aa4ae; }
+  .legend i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+  .note { font-size: 12px; color: #86d19a; margin: -8px 0 14px; }
+  .note.demo { color: #c9a86a; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>The floor</h1>
+  <p class="sub">drag to pan · scroll to zoom · hover a desk · <span id="session">—</span></p>
+  <p class="note demo" id="livenote">Reading the floor from chain…</p>
+  <div class="stage" id="stage">
+    <canvas id="c" width="2360" height="1240"></canvas>
+    <div class="tip" id="tip"></div>
+  </div>
+  <div class="legend">
+    <span><i style="background:#4ea36a"></i>holding a position</span>
+    <span><i style="background:#d2a33c"></i>researching</span>
+    <span><i style="background:#7d8894"></i>flat</span>
+    <span><i style="background:#b8503f"></i>stale — nobody is running it</span>
+  </div>
+</div>
+<script src="sectors.js"></script>
+<script src="desks.js"></script>
+<script>
+(() => {
+  const c = document.getElementById("c"), x = c.getContext("2d");
+  const stage = document.getElementById("stage"), tip = document.getElementById("tip");
+
+  /* Sixteen sectors. The screen colour is the sector, so the floor is readable
+     at a glance the way the crop art is on a field. */
+  /* From sectors.js, which is generated from the same file the contract's
+     registry was built from. A second copy in this page could drift. */
+  const SECTORS = window.SECTORS.map((s) => [s.name, s.colour, s.tickers]);
+  const STATUS = { pos: "#4ea36a", research: "#d2a33c", flat: "#7d8894", stale: "#b8503f" };
+
+  /* ---- market sessions ------------------------------------------------
+     The room reflects the clock. Times are US equity sessions in
+     America/New_York, which is what these stocks track wherever the chain
+     happens to be. */
+  const SESSIONS = {
+    pre:       { name: "Pre-market",   light: 0.62, crowd: 0.35, lamps: 0.7 },
+    regular:   { name: "Open",         light: 1.00, crowd: 1.00, lamps: 0.0 },
+    after:     { name: "After hours",  light: 0.55, crowd: 0.30, lamps: 0.8 },
+    overnight: { name: "Overnight",    light: 0.20, crowd: 0.10, lamps: 1.0 },
+    weekend:   { name: "Closed",       light: 0.18, crowd: 0.06, lamps: 1.0 },
+  };
+
+  const nyParts = () => {
+    const f = new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/New_York", weekday: "short",
+      hour: "2-digit", minute: "2-digit", hour12: false,
+    }).formatToParts(new Date());
+    const g = (t) => f.find((p) => p.type === t).value;
+    return { day: g("weekday"), mins: parseInt(g("hour"), 10) * 60 + parseInt(g("minute"), 10) };
+  };
+
+  const sessionNow = () => {
+    const { day, mins } = nyParts();
+    if (day === "Sat" || day === "Sun") return "weekend";
+    if (mins >= 240 && mins < 570) return "pre";        // 04:00 - 09:30
+    if (mins >= 570 && mins < 960) return "regular";    // 09:30 - 16:00
+    if (mins >= 960 && mins < 1200) return "after";     // 16:00 - 20:00
+    return "overnight";
+  };
+
+  let session = sessionNow();
+  let S = SESSIONS[session];
+  const applySession = () => {
+    const next = sessionNow();
+    if (next === session) return;
+    session = next; S = SESSIONS[session];
+    const el = document.getElementById("session");
+    if (el) el.textContent = S.name;
+  };
+  setInterval(applySession, 30000);
+
+  /* ---- floor plan ----------------------------------------------------
+     Pods of four desks, back to back, the way an actual open-plan floor is
+     laid out — two facing two, partitions between. Aisles run between pods. */
+  /* Bigger than a first pass had them. At 92px a desk the people were specks
+     and the whole point is watching them work, so the floor is drawn at a size
+     where a person is a person and you pan to see the rest of it. */
+  const POD_COLS = 9, POD_ROWS = 7;          // pods across and down
+  const DESK_W = 150, DESK_H = 104;          // one desk
+  const POD_W = DESK_W * 2 + 22, POD_H = DESK_H * 2 + 22;
+  const AISLE_X = 92, AISLE_Y = 82;
+  const PAD = 90;
+
+  /* The floor is a floor *in a building*. A band of glass across the north
+     side with the city beyond it, and a column of rooms down the west side —
+     corner office, break room, meeting room, stairwell. The pods start after
+     both, so everything below is offset rather than measured from the origin. */
+  const SKY_H   = 340;      // glass wall + skyline beyond
+  const ROOMS_W = 700;      // the west column of rooms
+  const ORIGIN_X = PAD + ROOMS_W;
+  const ORIGIN_Y = PAD + SKY_H;
+
+  const rnd = (s) => { let t = s + 0x6D2B79F5; t = Math.imul(t ^ t >>> 15, t | 1);
+    t ^= t + Math.imul(t ^ t >>> 7, t | 61); return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+
+  const desks = [];
+  let id = 100;
+  for (let pr = 0; pr < POD_ROWS; pr++) {
+    for (let pc = 0; pc < POD_COLS; pc++) {
+      const ox = ORIGIN_X + pc * (POD_W + AISLE_X);
+      const oy = ORIGIN_Y + pr * (POD_H + AISLE_Y);
+      for (let d = 0; d < 4; d++) {
+        const dx = ox + (d % 2) * (DESK_W + 14);
+        const dy = oy + ((d / 2) | 0) * (DESK_H + 14);
+        const seed = pr * 97 + pc * 13 + d;
+        const r = rnd(seed);
+        const occupied = r > 0.14;                       // some desks are empty
+        const st = !occupied ? null
+          : r > 0.72 ? "pos" : r > 0.42 ? "research" : r > 0.2 ? "flat" : "stale";
+        desks.push({
+          id: id++, x: dx, y: dy, facing: (d / 2 | 0) === 0 ? 1 : -1,
+          sector: Math.floor(rnd(seed + 31) * SECTORS.length),
+          ticker: null,   // resolved from the sector below
+          st, occupied, seed,
+          pnl: (rnd(seed + 3) * 18 - 6),
+        });
+        const d0 = desks[desks.length - 1];
+        const pool = SECTORS[d0.sector][2];
+        d0.ticker = pool[Math.floor(rnd(seed + 7) * pool.length)];
+      }
+    }
+  }
+  /* ---- real desks -----------------------------------------------------
+     The layout above gives 252 seats. Chain says which are taken. Anything the
+     chain does not fill stays an empty desk, which is the truthful picture of a
+     floor that is not full yet. */
+  let live = null;
+  const applyLive = (loaded) => {
+    live = loaded;
+    const note = document.getElementById("livenote");
+    if (!loaded.configured || !loaded.desks.length) {
+      note.textContent = loaded.note + " Showing an illustration of the floor.";
+      note.className = "note demo";
+      return;
+    }
+    for (const d of desks) { d.occupied = false; d.st = null; d.live = null; }
+    loaded.desks.forEach((L, i) => {
+      const d = desks[i];
+      if (!d) return;
+      d.occupied = true;
+      d.st = L.st;
+      d.live = L;
+      d.sector = L.sectors.length ? L.sectors[0] : d.sector;
+      d.ticker = L.positions.length ? L.positions[0].symbol
+        : (SECTORS[d.sector][2][0] || "—");
+      d.id = 100 + i;
+    });
+    note.textContent = loaded.desks.length + " desk" + (loaded.desks.length === 1 ? "" : "s") +
+      " on chain, read live.";
+    note.className = "note";
+  };
+
+  const W = ORIGIN_X + POD_COLS * POD_W + (POD_COLS - 1) * AISLE_X + PAD;
+  const H = ORIGIN_Y + POD_ROWS * POD_H + (POD_ROWS - 1) * AISLE_Y + PAD;
+
+  /* ---- walkers: characters moving between pods ---------------------- */
+  const lanesY = [], lanesX = [];
+  for (let pr = 0; pr <= POD_ROWS; pr++) lanesY.push(ORIGIN_Y + pr * (POD_H + AISLE_Y) - AISLE_Y / 2);
+  for (let pc = 0; pc <= POD_COLS; pc++) lanesX.push(ORIGIN_X + pc * (POD_W + AISLE_X) - AISLE_X / 2);
+
+  const SHIRTS = ["#5b6b7d","#7d6a5b","#4f6b5c","#6d5b7d","#8a7f5a","#5a7d7a","#7d5b5b"];
+  const walkers = [];
+  for (let i = 0; i < 30; i++) {
+    const horiz = i % 2 === 0;
+    walkers.push({
+      horiz,
+      lane: horiz ? lanesY[1 + (i % (lanesY.length - 1))] : lanesX[1 + (i % (lanesX.length - 1))],
+      p: rnd(i * 17) * (horiz ? W : H),
+      v: (rnd(i * 5) > .5 ? 1 : -1) * (0.22 + rnd(i * 9) * 0.3),
+      shirt: SHIRTS[i % SHIRTS.length],
+      skin: [ "#d8a882", "#a9704a", "#f0cba6", "#8a5a3a" ][i % 4],
+      phase: rnd(i * 3) * 6.28,
+      pause: 0,
+    });
+  }
+
+  /* ---- drawing ------------------------------------------------------- */
+  const rr = (px, py, w, h, r) => {
+    x.beginPath(); x.moveTo(px + r, py); x.arcTo(px + w, py, px + w, py + h, r);
+    x.arcTo(px + w, py + h, px, py + h, r); x.arcTo(px, py + h, px, py, r);
+    x.arcTo(px, py, px + w, py, r); x.closePath();
+  };
+
+  const css = getComputedStyle(document.documentElement);
+  const V = (n) => css.getPropertyValue(n).trim();
+
+  /* A person seen from above: shoulders, head, a suggestion of arms. Small
+     enough to be a dot at a glance and a person when you look. */
+  const person = (px, py, shirt, skin, t, walking) => {
+    x.save(); x.translate(px, py);
+    const bob = walking ? Math.sin(t) * 1.2 : 0;
+    x.fillStyle = "rgba(20,24,28,.22)";
+    x.beginPath(); x.ellipse(0, 8, 15, 8, 0, 0, 6.3); x.fill();      // shadow
+    x.fillStyle = shirt;                                              // shoulders
+    x.beginPath(); x.ellipse(0, bob, 14, 10.5, 0, 0, 6.3); x.fill();
+    if (walking) {                                                    // arms swing
+      x.strokeStyle = shirt; x.lineWidth = 5; x.lineCap = "round";
+      x.beginPath();
+      x.moveTo(-11.5, bob); x.lineTo(-14, bob + Math.sin(t) * 5);
+      x.moveTo(11.5, bob);  x.lineTo(14, bob - Math.sin(t) * 5);
+      x.stroke();
+    }
+    x.fillStyle = skin;                                               // head
+    x.beginPath(); x.arc(0, bob - 2.5, 8.6, 0, 6.3); x.fill();
+    x.fillStyle = "rgba(0,0,0,.32)";                                  // hair, from above
+    x.beginPath(); x.arc(0, bob - 4.2, 7.6, 3.34, 6.08); x.fill();
+    x.restore();
+  };
+
+  const desk = (d, t) => {
+    const col = SECTORS[d.sector][1];
+    // laminate top
+    x.fillStyle = V("--desk-edge"); rr(d.x + 2, d.y + 3, DESK_W, DESK_H, 5); x.fill();
+    x.fillStyle = V("--desk");      rr(d.x, d.y, DESK_W, DESK_H, 5); x.fill();
+
+    // monitors along the partition edge — two of them, because one screen on a
+    // trading desk would be the only unbelievable thing on this floor
+    /* The partition runs down the middle of a pod, so the screens go against
+       it and the person sits on the outer edge looking in. Drawn the other way
+       round at first, which put two people back to back on top of the divider. */
+    const my = d.facing === 1 ? d.y + DESK_H - 25 : d.y + 11;
+    const lit = d.occupied;
+    for (const mx of [d.x + 22, d.x + 82]) {
+      x.fillStyle = "#1b2026"; rr(mx, my, 46, 16, 3); x.fill();
+      x.fillStyle = lit ? col : V("--screen-off");
+      rr(mx + 2.5, my + 2.5, 41, 11, 2); x.fill();
+      if (lit) {                                    // a few rows of "data"
+        x.globalAlpha = .35; x.fillStyle = "#0b0e11";
+        for (let i = 0; i < 4; i++) x.fillRect(mx + 5, my + 4 + i * 2.4, 10 + ((d.seed + i * 7) % 22), 1.4);
+        x.globalAlpha = 1;
+      }
+    }
+    // paperwork
+    x.fillStyle = V("--paper");
+    rr(d.x + DESK_W - 42, d.y + DESK_H / 2 - 11, 29, 22, 2.5); x.fill();
+
+    if (d.occupied) {
+      const py = d.facing === 1 ? d.y + 24 : d.y + DESK_H - 24;
+      // chair
+      x.fillStyle = "#3b434c";
+      x.beginPath(); x.ellipse(d.x + DESK_W / 2, py - d.facing * 14, 18, 13, 0, 0, 6.3); x.fill();
+      person(d.x + DESK_W / 2, py, SHIRTS[d.seed % SHIRTS.length],
+             ["#d8a882","#a9704a","#f0cba6","#8a5a3a"][d.seed % 4],
+             t / 420 + d.seed, false);
+      // status lamp on the desk corner
+      const lx = d.x + 14, ly = d.y + (d.facing === 1 ? DESK_H - 16 : 16);
+      x.fillStyle = STATUS[d.st];
+      x.beginPath(); x.arc(lx, ly, 5.4, 0, 6.3); x.fill();
+      if (d.st === "research") {                       // gentle pulse
+        x.globalAlpha = 0.25 + 0.25 * Math.sin(t / 300 + d.seed);
+        x.beginPath(); x.arc(lx, ly, 11, 0, 6.3); x.fill();
+        x.globalAlpha = 1;
+      }
+    }
+  };
+
+  /* ---- the city ------------------------------------------------------
+     Skyline beyond the north glass. Deterministic, so it is the same city on
+     every load — a reseeded skyline every refresh would read as noise. Drawn
+     at 0.55 of the camera so it parallaxes behind the glass. */
+  const SKY = (() => {
+    const b = [];
+    let px = -400;
+    for (let i = 0; px < 6000; i++) {
+      const w = 46 + rnd(i * 3) * 96;
+      const h = 60 + rnd(i * 7) * 210;
+      b.push({ x: px, w, h, depth: rnd(i * 11) > .55 ? 1 : 0, seed: i });
+      px += w + 8 + rnd(i * 5) * 26;
+    }
+    return b;
+  })();
+
+  /* Sky colour follows the session, because the whole point of the window is
+     that you can see what time it is without reading the label. */
+  const SKY_TONE = {
+    pre:       ["#2b3a52", "#7d6a72"],
+    regular:   ["#7fa6c9", "#cfe0ee"],
+    after:     ["#4a4560", "#c48a63"],
+    overnight: ["#0d1420", "#1d2942"],
+    weekend:   ["#101a28", "#22304a"],
+  };
+
+  const skyline = (t) => {
+    const tone = SKY_TONE[session] || SKY_TONE.regular;
+    const lit = session === "overnight" || session === "weekend" || session === "after";
+    const g = x.createLinearGradient(0, 0, 0, SKY_H);
+    g.addColorStop(0, tone[0]); g.addColorStop(1, tone[1]);
+    x.fillStyle = g; x.fillRect(0, 0, W, SKY_H);
+
+    // two ranks of buildings, the far one hazier
+    for (const pass of [0, 1]) {
+      for (const b of SKY) {
+        if (b.depth !== pass) continue;
+        const far = pass === 0;
+        const bx = b.x, bh = far ? b.h * 0.72 : b.h;
+        const top = SKY_H - bh - (far ? 26 : 0);
+        x.fillStyle = far ? "rgba(24,34,50,.45)" : "rgba(16,24,36,.78)";
+        x.fillRect(bx, top, b.w, bh + 40);
+        if (!far) {
+          // windows; a few of them lit, and which ones is stable per building
+          const cols = Math.max(2, Math.floor(b.w / 15));
+          const rows = Math.max(2, Math.floor(bh / 19));
+          for (let cc = 0; cc < cols; cc++) {
+            for (let rr2 = 0; rr2 < rows; rr2++) {
+              const on = rnd(b.seed * 131 + cc * 17 + rr2 * 7) > (lit ? 0.42 : 0.86);
+              if (!on) continue;
+              x.fillStyle = lit ? "rgba(255,206,130,.72)" : "rgba(198,222,244,.30)";
+              x.fillRect(bx + 6 + cc * 15, top + 8 + rr2 * 19, 7, 10);
+            }
+          }
+        }
+      }
+    }
+    // a couple of aircraft lights at night, moving
+    if (lit) {
+      const ax = ((t / 46) % (W + 400)) - 200;
+      x.fillStyle = "rgba(255,120,110,.9)";
+      x.beginPath(); x.arc(ax, 62, 3.2, 0, 6.3); x.fill();
+    }
+  };
+
+  /* The glass wall itself: mullions, sill, and the reflected strip of floor. */
+  const glassWall = () => {
+    x.fillStyle = "rgba(150,190,225,.10)"; x.fillRect(0, 0, W, SKY_H);
+    x.fillStyle = "rgba(255,255,255,.07)";
+    for (let gx = 0; gx < W; gx += 190) x.fillRect(gx, 0, 3, SKY_H);       // mullions
+    // sill / heater run
+    x.fillStyle = "#8e9aa6"; x.fillRect(0, SKY_H - 16, W, 16);
+    x.fillStyle = "#a3aeb9"; x.fillRect(0, SKY_H - 16, W, 4);
+    // light spilling onto the carpet from the window
+    const g = x.createLinearGradient(0, SKY_H, 0, SKY_H + 150);
+    const day = session === "regular" || session === "pre";
+    g.addColorStop(0, day ? "rgba(255,246,214,.30)" : "rgba(150,180,220,.12)");
+    g.addColorStop(1, "rgba(255,255,255,0)");
+    x.fillStyle = g; x.fillRect(0, SKY_H, W, 150);
+  };
+
+  /* ---- rooms along the west side -------------------------------------- */
+  const roomShell = (rx, ry, rw, rh, label, floorCol) => {
+    x.fillStyle = floorCol; rr(rx, ry, rw, rh, 8); x.fill();
+    x.strokeStyle = "rgba(240,248,255,.55)"; x.lineWidth = 5;
+    rr(rx, ry, rw, rh, 8); x.stroke();                        // glass partition
+    x.strokeStyle = "rgba(255,255,255,.22)"; x.lineWidth = 1.5;
+    rr(rx + 5, ry + 5, rw - 10, rh - 10, 6); x.stroke();
+    x.fillStyle = "rgba(20,26,32,.5)";
+    x.font = "600 15px ui-monospace, Menlo, Consolas, monospace";
+    x.fillText(label, rx + 16, ry + 26);
+  };
+
+  const plant = (px, py, s = 1) => {
+    x.fillStyle = "#8a6a4a";
+    x.beginPath(); x.ellipse(px, py, 13 * s, 10 * s, 0, 0, 6.3); x.fill();
+    x.fillStyle = "#3f7a4e";
+    for (let i = 0; i < 7; i++) {
+      const a = i * 0.9;
+      x.beginPath();
+      x.ellipse(px + Math.cos(a) * 11 * s, py + Math.sin(a) * 8 * s, 9 * s, 6 * s, a, 0, 6.3);
+      x.fill();
+    }
+  };
+
+  const cornerOffice = (rx, ry, rw, rh, t) => {
+    roomShell(rx, ry, rw, rh, "CORNER OFFICE", "#7c8794");
+    const cx = rx + rw / 2;
+
+    /* Rug: a border and a field, not one flat slab. The first pass filled half
+       the room with solid brown and read as a hole in the floor. */
+    const gx = rx + 74, gy = ry + rh * 0.60, gw = rw - 170, gh = rh * 0.30;
+    x.fillStyle = "#8d7a67"; rr(gx, gy, gw, gh, 5); x.fill();
+    x.fillStyle = "#9c8a76"; rr(gx + 9, gy + 8, gw - 18, gh - 16, 3); x.fill();
+    x.strokeStyle = "rgba(120,100,84,.55)"; x.lineWidth = 2;
+    rr(gx + 18, gy + 16, gw - 36, gh - 32, 2); x.stroke();
+
+    // bookshelf down the west wall
+    x.fillStyle = "#7a6a55"; rr(rx + 14, ry + 54, 26, rh * 0.42, 3); x.fill();
+    for (let i = 0; i < 6; i++) {
+      x.fillStyle = ["#8a4f3f","#3f5f7a","#6a6a4a","#7a5f7a"][i % 4];
+      x.fillRect(rx + 18, ry + 62 + i * (rh * 0.42 - 16) / 6, 18, 8);
+    }
+
+    // the big desk, across the room facing the door
+    const dw = rw * 0.52, dh = 96;
+    const dx = cx - dw / 2 + 22, dy = ry + 74;
+    x.fillStyle = V("--desk-edge"); rr(dx + 3, dy + 4, dw, dh, 8); x.fill();
+    x.fillStyle = V("--desk");      rr(dx, dy, dw, dh, 8); x.fill();
+    // two monitors, back edge
+    for (const mx of [dx + 34, dx + dw - 116]) {
+      x.fillStyle = "#1b2026"; rr(mx, dy + 12, 72, 22, 3); x.fill();
+      x.fillStyle = "#2e6f8f"; rr(mx + 3, dy + 15, 66, 16, 2); x.fill();
+      x.globalAlpha = .3; x.fillStyle = "#0b0e11";
+      for (let i = 0; i < 4; i++) x.fillRect(mx + 7, dy + 17 + i * 3.4, 20 + i * 9, 2);
+      x.globalAlpha = 1;
+    }
+    x.fillStyle = V("--paper"); rr(dx + dw - 44, dy + 52, 34, 28, 3); x.fill();
+    x.fillStyle = "#c9503f";                                   // a mug
+    x.beginPath(); x.arc(dx + 22, dy + 66, 7, 0, 6.3); x.fill();
+
+    // executive chair, and the executive
+    x.fillStyle = "#2b3138";
+    x.beginPath(); x.ellipse(dx + dw / 2, dy + dh + 34, 26, 19, 0, 0, 6.3); x.fill();
+    x.fillStyle = "#39414a";
+    x.beginPath(); x.ellipse(dx + dw / 2, dy + dh + 30, 22, 15, 0, 0, 6.3); x.fill();
+    person(dx + dw / 2, dy + dh + 26, "#4f5a68", "#d8a882", t / 500, false);
+
+    /* Sofa seen from above: a back rail, two arms and two cushions. A single
+       rounded rectangle read as a filing cabinet. */
+    const sw = gw * 0.62, sx2 = gx + 22, sy = gy + 18;
+    x.fillStyle = "#454e59"; rr(sx2, sy, sw, 22, 6); x.fill();               // back
+    x.fillStyle = "#4d5763"; rr(sx2, sy + 14, 22, 44, 6); x.fill();         // arms
+    rr(sx2 + sw - 22, sy + 14, 22, 44, 6); x.fill();
+    for (let i = 0; i < 2; i++) {
+      x.fillStyle = "#5c6773";
+      rr(sx2 + 26 + i * ((sw - 56) / 2), sy + 18, (sw - 60) / 2, 36, 5); x.fill();
+    }
+    // a visitor on one end
+    person(sx2 + sw - 44, sy + 34, "#7d6a5b", "#f0cba6", t / 520, false);
+
+    // coffee table, low and oval
+    x.fillStyle = "#6a5c4f";
+    x.beginPath(); x.ellipse(gx + gw * 0.44, gy + gh - 26, 54, 26, 0, 0, 6.3); x.fill();
+    x.fillStyle = "#7d6e5e";
+    x.beginPath(); x.ellipse(gx + gw * 0.44, gy + gh - 30, 52, 24, 0, 0, 6.3); x.fill();
+    x.fillStyle = V("--paper"); rr(gx + gw * 0.44 - 16, gy + gh - 38, 30, 20, 2); x.fill();
+
+    plant(rx + rw - 58, ry + rh - 62, 1.35);
+    plant(rx + rw - 62, ry + 92, 1);
+  };
+
+  const breakRoom = (rx, ry, rw, rh, t) => {
+    roomShell(rx, ry, rw, rh, "BREAK ROOM", "#818c99");
+    // galley counter along the north wall, with a fridge at the end
+    x.fillStyle = "#8e8474"; rr(rx + 20, ry + 44, rw - 128, 56, 6); x.fill();
+    x.fillStyle = "#a9a08d"; rr(rx + 20, ry + 44, rw - 128, 12, 5); x.fill();
+    x.fillStyle = "#b9c2ca"; rr(rx + rw - 100, ry + 40, 80, 108, 7); x.fill();   // fridge
+    x.fillStyle = "#9fa9b2"; x.fillRect(rx + rw - 100, ry + 92, 80, 4);
+    x.fillStyle = "#7d868f"; rr(rx + rw - 34, ry + 62, 6, 20, 3); x.fill();
+    // sink
+    x.fillStyle = "#7d8791"; rr(rx + 40, ry + 58, 44, 30, 5); x.fill();
+    x.fillStyle = "#98a2ac"; rr(rx + 46, ry + 62, 32, 20, 4); x.fill();
+    // the machine, and the only thing on this floor that is purely for show
+    x.fillStyle = "#2b3138"; rr(rx + 120, ry + 52, 46, 42, 5); x.fill();
+    x.fillStyle = "#c9503f"; x.fillRect(rx + 128, ry + 60, 12, 5);
+    x.fillStyle = "#8a939c"; x.fillRect(rx + 128, ry + 82, 30, 6);
+    x.globalAlpha = .30 + .18 * Math.sin(t / 420);
+    x.fillStyle = "#e8e4dc";
+    for (let i = 0; i < 3; i++) {
+      const rise = ((t / 55) + i * 14) % 42;
+      x.beginPath();
+      x.ellipse(rx + 143 + Math.sin((t / 300) + i) * 5, ry + 48 - rise, 6 - i, 9, 0, 0, 6.3);
+      x.fill();
+    }
+    x.globalAlpha = 1;
+    // mugs on the drying rail
+    for (let i = 0; i < 5; i++) {
+      x.fillStyle = ["#d8d2c6","#c9a86a","#9fb5c9","#c98a8a","#a8c0a0"][i];
+      x.beginPath(); x.arc(rx + 196 + i * 24, ry + 74, 7, 0, 6.3); x.fill();
+      x.strokeStyle = "rgba(0,0,0,.18)"; x.lineWidth = 2;
+      x.beginPath(); x.arc(rx + 196 + i * 24, ry + 74, 7, 0, 6.3); x.stroke();
+    }
+    // three round tables with stools, two of them in use
+    const tables = [[rx + rw * 0.28, ry + rh * 0.52], [rx + rw * 0.68, ry + rh * 0.48],
+                    [rx + rw * 0.46, ry + rh * 0.80]];
+    tables.forEach(([tx, ty], ti) => {
+      x.fillStyle = "#6e6357";
+      x.beginPath(); x.ellipse(tx, ty + 6, 52, 37, 0, 0, 6.3); x.fill();
+      x.fillStyle = "#8a7d6c";
+      x.beginPath(); x.ellipse(tx, ty, 50, 35, 0, 0, 6.3); x.fill();
+      for (let i = 0; i < 4; i++) {
+        const a = i * 1.57 + 0.4;
+        const sx2 = tx + Math.cos(a) * 74, sy2 = ty + Math.sin(a) * 56;
+        x.fillStyle = "#4a535d";
+        x.beginPath(); x.ellipse(sx2, sy2, 15, 12, 0, 0, 6.3); x.fill();
+        if (ti < 2 && i === ti + 1)
+          person(sx2, sy2 - 3, SHIRTS[(ti * 3 + i) % SHIRTS.length],
+                 ["#d8a882","#a9704a","#f0cba6"][(ti + i) % 3], t / 470 + i, false);
+      }
+      x.fillStyle = "#d8d2c6";
+      x.beginPath(); x.arc(tx + 14, ty - 6, 7, 0, 6.3); x.fill();
+    });
+    // someone waiting at the machine
+    person(rx + 150, ry + 132, "#6d5b7d", "#a9704a", t / 460, false);
+    plant(rx + rw - 52, ry + rh - 54, 1.2);
+  };
+
+  const meetingRoom = (rx, ry, rw, rh, t) => {
+    roomShell(rx, ry, rw, rh, "MEETING", "#78838f");
+    x.fillStyle = "#6e6357"; rr(rx + 44, ry + 62, rw - 88, 108, 40); x.fill();
+    x.fillStyle = "#8a7d6c"; rr(rx + 40, ry + 58, rw - 88, 108, 40); x.fill();
+    for (let i = 0; i < 8; i++) {
+      const a = i * 0.785 + 0.4;
+      const cx = rx + rw / 2 - 2 + Math.cos(a) * (rw / 2 - 34);
+      const cy = ry + 112 + Math.sin(a) * 82;
+      x.fillStyle = "#454e58";
+      x.beginPath(); x.ellipse(cx, cy, 15, 12, 0, 0, 6.3); x.fill();
+      if (i % 3 === 0) person(cx, cy - 3, SHIRTS[i % SHIRTS.length],
+                              ["#d8a882","#a9704a","#f0cba6"][i % 3], t / 500 + i, false);
+    }
+    // whiteboard
+    x.fillStyle = "#eceae4"; rr(rx + 24, ry + rh - 34, rw - 48, 18, 3); x.fill();
+    x.fillStyle = "#4ea36a"; x.fillRect(rx + 40, ry + rh - 28, 58, 3);
+    x.fillStyle = "#b8503f"; x.fillRect(rx + 112, ry + rh - 28, 34, 3);
+  };
+
+  /* Stair core, drawn as a plan: two flights around a half-landing. */
+  const stairwell = (rx, ry, rw, rh) => {
+    roomShell(rx, ry, rw, rh, "STAIRS", "#6b7682");
+    const steps = 9, sw = (rw - 56) / 2, sh = (rh - 74) / steps;
+    for (let i = 0; i < steps; i++) {
+      x.fillStyle = i % 2 ? "#96a1ac" : "#8b96a2";
+      x.fillRect(rx + 22, ry + 46 + i * sh, sw, sh - 2);
+      x.fillStyle = i % 2 ? "#8b96a2" : "#96a1ac";
+      x.fillRect(rx + 34 + sw, ry + 46 + i * sh, sw, sh - 2);
+    }
+    x.strokeStyle = "#5b656f"; x.lineWidth = 4;
+    x.beginPath();
+    x.moveTo(rx + 22 + sw + 6, ry + 44); x.lineTo(rx + 22 + sw + 6, ry + rh - 26);
+    x.stroke();
+    // arrow: up on the left, down on the right
+    x.fillStyle = "rgba(20,26,32,.45)";
+    x.font = "600 13px ui-monospace, Menlo, Consolas, monospace";
+    x.fillText("UP", rx + 34, ry + rh - 8);
+    x.fillText("DN", rx + 46 + sw, ry + rh - 8);
+  };
+
+  /* Placement of the west column. Heights are chosen so the four rooms fill
+     the same span as the pod grid, which keeps the plan legible. */
+  const ROOMS = (() => {
+    const rx = PAD, rw = ROOMS_W - 96;
+    const top = ORIGIN_Y;
+    const gap = 30;
+    const h1 = 430, h2 = 400, h3 = 340, h4 = 300;
+    return [
+      { f: cornerOffice, x: rx, y: top,                          w: rw, h: h1 },
+      { f: breakRoom,    x: rx, y: top + h1 + gap,               w: rw, h: h2 },
+      { f: meetingRoom,  x: rx, y: top + h1 + h2 + gap * 2,      w: rw, h: h3 },
+      { f: stairwell,    x: rx, y: top + h1 + h2 + h3 + gap * 3, w: rw, h: h4 },
+    ];
+  })();
+
+  const pod = (px, py) => {
+    // fabric partition running between the two rows of desks
+    x.fillStyle = V("--panel-edge"); rr(px - 6, py + DESK_H + 4, POD_W + 12, 17, 4); x.fill();
+    x.fillStyle = V("--panel");      rr(px - 6, py + DESK_H + 2, POD_W + 12, 15, 4); x.fill();
+    x.fillStyle = V("--panel-top");  x.fillRect(px - 3, py + DESK_H + 4, POD_W + 6, 3.5);
+    // and the outer screens
+    x.fillStyle = V("--panel"); rr(px - 13, py - 9, 8, POD_H + 18, 3.5); x.fill();
+    rr(px + POD_W + 5, py - 9, 8, POD_H + 18, 3.5); x.fill();
+  };
+
+  /* Zoom is a camera property, not a CSS transform, so hit-testing and the
+     lamp pass keep working at any magnification. camX/camY are world
+     coordinates of the top-left of the viewport. */
+  let camX = 0, camY = 0, zoom = 1;
+  const MINZ = 0.55, MAXZ = 2.6;
+  const viewW = () => c.width / zoom;
+  const viewH = () => c.height / zoom;
+  const clampCam = () => {
+    camX = Math.max(-40, Math.min(Math.max(-40, W - viewW() + 40), camX));
+    camY = Math.max(-40, Math.min(Math.max(-40, H - viewH() + 40), camY));
+  };
+
+  const draw = (t) => {
+    x.save();
+    x.fillStyle = V("--carpet"); x.fillRect(0, 0, c.width, c.height);
+    x.scale(zoom, zoom);
+
+    /* The city sits behind the glass, so it moves at a fraction of the camera.
+       Drawn before the floor translate, in its own transform. */
+    x.save();
+    x.translate(-camX * 0.55, -camY);
+    skyline(t);
+    x.restore();
+
+    x.translate(-camX, -camY);
+    glassWall();
+
+    // carpet: aisle runners, so the floor reads as a plan not a field
+    x.fillStyle = V("--aisle");
+    lanesX.slice(1).forEach((lx) => x.fillRect(lx - AISLE_X / 2 + 6, SKY_H, AISLE_X - 12, H - SKY_H));
+    lanesY.slice(1).forEach((ly) => x.fillRect(0, ly - AISLE_Y / 2 + 6, W, AISLE_Y - 12));
+    // the walkway along the window, and the spine between rooms and pods
+    x.fillRect(0, SKY_H, W, 74);
+    x.fillRect(ORIGIN_X - AISLE_X - 24, SKY_H, AISLE_X + 10, H - SKY_H);
+
+    ROOMS.forEach((r) => r.f(r.x, r.y, r.w, r.h, t));
+
+    for (let pr = 0; pr < POD_ROWS; pr++)
+      for (let pc = 0; pc < POD_COLS; pc++)
+        pod(ORIGIN_X + pc * (POD_W + AISLE_X), ORIGIN_Y + pr * (POD_H + AISLE_Y));
+
+    desks.forEach((d) => desk(d, t));
+
+    const onFloor = Math.max(1, Math.round(walkers.length * S.crowd));
+    walkers.forEach((w, i) => {
+      if (i >= onFloor) return;
+      if (w.pause > 0) { w.pause -= 1; }
+      else {
+        w.p += w.v;
+        if (Math.random() < 0.0016) w.pause = 60 + Math.random() * 90;
+        const lim = w.horiz ? W : H;
+        if (w.p < -20) w.p = lim + 20;
+        if (w.p > lim + 20) w.p = -20;
+      }
+      const px = w.horiz ? w.p : w.lane;
+      const py = w.horiz ? w.lane : w.p;
+      person(px, py, w.shirt, w.skin, t / 90 + w.phase, w.pause <= 0);
+    });
+    x.restore();
+
+    // Ambient. Multiply darkens everything already drawn, then a warm lift
+    // keeps it from going flat grey — a dark office is blue-black with pools
+    // of lamp light, not evenly dim.
+    if (S.light < 1) {
+      x.save();
+      x.globalCompositeOperation = "multiply";
+      const k = Math.round(255 * S.light);
+      x.fillStyle = `rgb(${k}, ${k}, ${Math.min(255, Math.round(k * 1.12))})`;
+      x.fillRect(0, 0, c.width, c.height);
+      x.restore();
+    }
+
+    /* Lamps are drawn after the wash and added to it. Drawn before, they were
+       darkened by the same multiply that dims the room, which left a flat dark
+       floor instead of pools of light in a dark floor. */
+    if (S.lamps > 0) {
+      x.save();
+      x.scale(zoom, zoom);
+      x.translate(-camX, -camY);
+      x.globalCompositeOperation = "lighter";
+      for (const d of desks) {
+        if (!d.occupied) continue;
+        const lx = d.x + 14, ly = d.y + (d.facing === 1 ? DESK_H - 16 : 16);
+        if (lx < camX - 60 || lx > camX + viewW() + 60) continue;   // offscreen
+        const g = x.createRadialGradient(lx, ly, 0, lx, ly, 54);
+        const a = 0.30 * S.lamps;
+        g.addColorStop(0, `rgba(255, 214, 140, ${a})`);
+        g.addColorStop(0.45, `rgba(255, 190, 110, ${a * 0.35})`);
+        g.addColorStop(1, "rgba(255, 190, 110, 0)");
+        x.fillStyle = g;
+        x.beginPath(); x.arc(lx, ly, 54, 0, 6.3); x.fill();
+        // and the screens themselves throw a little light
+        const sy = d.facing === 1 ? d.y + DESK_H - 17 : d.y + 19;
+        const g2 = x.createRadialGradient(d.x + DESK_W / 2, sy, 0, d.x + DESK_W / 2, sy, 66);
+        g2.addColorStop(0, `rgba(150, 200, 255, ${0.16 * S.lamps})`);
+        g2.addColorStop(1, "rgba(150, 200, 255, 0)");
+        x.fillStyle = g2;
+        x.beginPath(); x.arc(d.x + DESK_W / 2, sy, 66, 0, 6.3); x.fill();
+      }
+      x.restore();
+    }
+    requestAnimationFrame(draw);
+  };
+  document.getElementById("session").textContent = S.name;
+  requestAnimationFrame(draw);
+
+  // Read once now, then every couple of minutes. Failure is reported, never
+  // papered over with the illustration pretending to be real.
+  const refresh = () =>
+    window.loadDesks()
+      .then(applyLive)
+      .catch((e) => {
+        const n = document.getElementById("livenote");
+        n.textContent = "Could not reach the chain — " + e.message + ". Showing an illustration.";
+        n.className = "note demo";
+      });
+  refresh();
+  setInterval(refresh, 120000);
+
+  /* ---- pan + hover --------------------------------------------------- */
+  let down = false, sx = 0, sy = 0;
+  stage.addEventListener("pointerdown", (e) => {
+    const r = c.getBoundingClientRect(), k = c.width / r.width;
+    down = true; sx = camX + e.clientX * (k / zoom); sy = camY + e.clientY * (k / zoom);
+    stage.classList.add("drag");
+  });
+  addEventListener("pointerup", () => { down = false; stage.classList.remove("drag"); });
+  stage.addEventListener("pointermove", (e) => {
+    const r = c.getBoundingClientRect(), k = c.width / r.width;
+    if (down) {
+      camX = sx - e.clientX * (k / zoom);
+      camY = sy - e.clientY * (k / zoom);
+      clampCam();
+      tip.style.opacity = 0; return;
+    }
+    const mx = (e.clientX - r.left) * k / zoom + camX, my = (e.clientY - r.top) * k / zoom + camY;
+    const d = desks.find((q) => mx > q.x && mx < q.x + DESK_W && my > q.y && my < q.y + DESK_H);
+    if (!d || !d.occupied) { tip.style.opacity = 0; return; }
+    const name = SECTORS[d.sector][0], col = SECTORS[d.sector][1];
+    const label = { pos: "holding a position", research: "researching", flat: "flat", stale: "stale — nobody is running it" }[d.st];
+    if (d.live) {
+      const L = d.live;
+      const pos = L.positions.length
+        ? L.positions.map((p) => "long $" + p.symbol + " &middot; $" + p.usd.toFixed(0)).join("<br>")
+        : label;
+      const idle = L.hoursIdle === null ? "no trades yet"
+        : L.hoursIdle < 1 ? "traded in the last hour"
+        : Math.round(L.hoursIdle) + "h since its last trade";
+      tip.innerHTML =
+        `<b>Desk ${d.id}</b><br><span class="s" style="background:${col}"></span>` +
+        L.sectors.map((s) => SECTORS[s][0]).join(", ") +
+        `<br><span class="m">book $${L.bookUsd.toFixed(2)}<br>${pos}<br>${idle}</span>`;
+    } else {
+      tip.innerHTML = `<b>Desk ${d.id}</b><br><span class="s" style="background:${col}"></span>${name}` +
+        `<br><span class="m">${label} &middot; illustration</span>`;
+    }
+    tip.style.left = (e.clientX - r.left + 14) + "px";
+    tip.style.top = (e.clientY - r.top + 12) + "px";
+    tip.style.opacity = 1;
+  });
+  stage.addEventListener("pointerleave", () => { tip.style.opacity = 0; });
+
+  /* Wheel zooms about the pointer, so the thing under the cursor stays put. */
+  stage.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    const r = c.getBoundingClientRect(), k = c.width / r.width;
+    const wx = (e.clientX - r.left) * k / zoom + camX;
+    const wy = (e.clientY - r.top) * k / zoom + camY;
+    const next = Math.max(MINZ, Math.min(MAXZ, zoom * (e.deltaY < 0 ? 1.12 : 1 / 1.12)));
+    if (next === zoom) return;
+    zoom = next;
+    camX = wx - (e.clientX - r.left) * k / zoom;
+    camY = wy - (e.clientY - r.top) * k / zoom;
+    clampCam();
+    tip.style.opacity = 0;
+  }, { passive: false });
+})();
+</script>
+</body>
+</html>

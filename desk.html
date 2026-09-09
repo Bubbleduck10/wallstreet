@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WallStreet — a desk</title>
+<style>
+  :root {
+    /* The floor's palette. Same token names the light version used, so the
+       rules below did not have to change — only what the names mean. */
+    --ink: #e8e4dc; --ink-soft: #9aa4ae; --ink-faint: #8c96a1;
+    --paper: #1b2026; --panel: #232a31; --line: #333c45; --line-2: #3d474f;
+    --accent: #4ea36a; --accent-soft: #1d2b23;
+    --warn: #d2a33c; --warn-soft: #251f18; --bad: #dd7d6b;
+    --desk: #d9cdb8; --carpet: #6f7d8c; --field: #1a1f25;
+    --page: 820px;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --serif: -apple-system, "Segoe UI", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; background: var(--paper); color: var(--ink);
+         font: 15px/1.55 -apple-system, "Segoe UI", system-ui, sans-serif; }
+  .wrap { max-width: var(--page); margin: 0 auto; padding: 30px 24px 80px; }
+  a { color: var(--accent); }
+  .back { font-size: 13px; color: var(--ink-soft); text-decoration: none; }
+  h1 { font: 400 32px/1.1 var(--serif); margin: 14px 0 2px; }
+  .addr { font: 12px/1.5 var(--mono); color: var(--ink-faint); word-break: break-all; }
+  .panel { border: 1px solid var(--line); border-radius: 10px; background: var(--panel);
+           padding: 20px 22px; margin-top: 18px; }
+  .panel h2 { font: 400 19px/1.2 var(--serif); margin: 0 0 12px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 18px; }
+  .stat .k { font: 11px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-faint); }
+  .stat .v { font: 400 25px/1.2 var(--serif); margin-top: 5px; }
+  .stat .n { font-size: 12px; color: var(--ink-soft); }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th { text-align: left; font: 11px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase;
+       color: var(--ink-faint); padding: 0 10px 8px 0; border-bottom: 1px solid var(--line); }
+  td { padding: 11px 10px 11px 0; border-bottom: 1px solid var(--line); }
+  td.r, th.r { text-align: right; }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px;
+          background: var(--accent-soft); color: var(--accent); }
+  .swatch { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 7px; }
+  .empty { color: var(--ink-soft); font-size: 14px; }
+  button { font: 500 14px/1 inherit; padding: 0 16px; height: 40px; border-radius: 7px;
+           border: 1px solid #c3b79f; background: var(--desk); color: #23282e; cursor: pointer;
+           font-weight: 600; }
+  button.ghost { background: var(--field); color: var(--ink); }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 14px; }
+  .status { font-size: 13.5px; color: var(--ink-soft); margin-top: 12px; min-height: 20px; }
+  .status.err { color: var(--bad); } .status.ok { color: var(--accent); font-weight: 600; }
+  .note { font-size: 13.5px; color: var(--ink-soft); margin-top: 10px; }
+
+  /* shared chrome ---------------------------------------------------- */
+  .topbar { border-bottom: 1px solid var(--line); background: var(--paper);
+            position: sticky; top: 0; z-index: 20; }
+  .topbar .in { max-width: var(--page); margin: 0 auto; padding: 0 24px; height: 60px;
+                display: flex; align-items: center; justify-content: space-between; }
+  .topbar .mark { font: 600 18px/1 var(--serif); letter-spacing: -.02em;
+                  text-decoration: none; color: var(--ink); }
+  .topbar .mark em { font-style: normal; color: var(--carpet); }
+  .topbar nav { display: flex; gap: 20px; align-items: center; font-size: 14px; }
+  .topbar nav a { color: var(--ink-soft); text-decoration: none; }
+  .topbar nav a:hover { color: var(--ink); }
+  .topbar .clock { font: 12px/1 var(--mono); color: var(--ink-soft); display: flex;
+                   align-items: center; gap: 7px; padding: 6px 11px;
+                   border: 1px solid var(--line-2); border-radius: 999px; }
+  .topbar .clock i { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+  .topbar .clock.closed i { background: var(--ink-faint); }
+  .topbar .clock.thin i { background: var(--warn); }
+</style>
+</head>
+<body>
+<div class="topbar"><div class="in">
+  <a class="mark" href="./">Wall<em>Street</em></a>
+  <nav>
+    <a href="./floor.html">The floor</a>
+    <a href="./mint.html">Hire a desk</a>
+    <span class="clock" id="wsclock"><i></i><span id="wsclock-t">—</span></span>
+  </nav>
+</div></div>
+<div class="wrap">
+  <a class="back" href="./floor.html">&lsaquo; the floor</a>
+  <h1 id="title">A desk</h1>
+  <p class="addr" id="vaddr">…</p>
+
+  <div class="panel">
+    <div class="grid">
+      <div class="stat"><span class="k">Book</span><div class="v" id="book">—</div><span class="n" id="booknote">cash and positions</span></div>
+      <div class="stat"><span class="k">Cash</span><div class="v" id="cash">—</div><span class="n">USDG</span></div>
+      <div class="stat"><span class="k">Positions</span><div class="v" id="npos">—</div><span class="n" id="idle"></span></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Mandate</h2>
+    <p class="note">Fixed when the desk was funded. The contract checks it on every trade, so
+    anything not listed here is not something this agent can buy — not now, not later.</p>
+    <div id="mandate" style="margin-top:12px"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Holding</h2>
+    <div id="positions"><p class="empty">Reading from chain…</p></div>
+  </div>
+
+  <div class="panel">
+    <h2>Withdraw</h2>
+    <p class="note" id="ownnote">Only the desk&rsquo;s owner can withdraw, and can do it at any
+    time — including with positions still open. It does not need the agent to cooperate.</p>
+    <div class="row" id="wrow" hidden>
+      <button class="ghost" id="wcash" type="button">Withdraw all cash</button>
+      <button class="ghost" id="wall" type="button">Withdraw everything</button>
+    </div>
+    <p class="status" id="status"></p>
+  </div>
+
+  <div class="panel">
+    <h2>Running it</h2>
+    <p class="note">The agent key was generated when this desk was hired and is held by whoever
+    hired it. Point the runner at this vault with that key:</p>
+    <p class="addr" style="margin-top:10px" id="cmd">node agent/runner.mjs --vault … --strategy ./my-strategy.mjs --dry</p>
+  </div>
+</div>
+
+<script src="sectors.js"></script>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const st = (m, k) => { const e = $("status"); e.textContent = m; e.className = "status " + (k || ""); };
+  const vault = new URLSearchParams(location.search).get("v");
+
+  const SEL = {
+    owner: "0x8da5cb5b", agent: "0xf5ff5c76", mandate: "0x39b1b96d",
+    balanceOf: "0x70a08231", slot0: "0x3850c7bd",
+    withdraw: "0xf3fef3a3", withdrawAll: "0xfa09e630",
+  };
+  const pad = (a) => a.toLowerCase().replace(/^0x/, "").padStart(64, "0");
+  const padN = (n) => BigInt(n).toString(16).padStart(64, "0");
+  const big = (h) => BigInt(h && h !== "0x" ? h : "0x0");
+  const word = (h, i) => (h || "").replace(/^0x/, "").slice(i * 64, (i + 1) * 64);
+  const addrOf = (w) => "0x" + w.slice(24);
+  const usd = (n) => "$" + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  const rpc = async (m, p) => {
+    const r = await fetch(window.WS.rpc, { method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: m, params: p }) });
+    const j = await r.json();
+    if (j.error) throw new Error(j.error.message);
+    return j.result;
+  };
+  const call = (to, data) => rpc("eth_call", [{ to, data }, "latest"]);
+
+  /* Same maths as the runner. In BigInt the decimal adjustment floors to zero. */
+  const price = (s0, stock, quote, sd, qd) => {
+    const sq = big("0x" + word(s0, 0));
+    if (sq === 0n) return 0;
+    const sp = Number(sq) / 2 ** 96, ratio = sp * sp;
+    if (!isFinite(ratio) || ratio === 0) return 0;
+    return (stock.toLowerCase() < quote.toLowerCase() ? ratio : 1 / ratio) * 10 ** (sd - qd);
+  };
+
+  let owner = null, quoteBal = 0n, held = [];
+
+  async function load() {
+    if (!/^0x[0-9a-fA-F]{40}$/.test(vault || "")) {
+      $("title").textContent = "No desk specified.";
+      $("vaddr").textContent = "Add ?v=0x… to the address.";
+      return;
+    }
+    $("vaddr").textContent = vault;
+    $("cmd").textContent = "node agent/runner.mjs --vault " + vault + " --strategy ./my-strategy.mjs --dry";
+
+    owner = addrOf(word(await call(vault, SEL.owner), 0));
+    const agent = addrOf(word(await call(vault, SEL.agent), 0));
+    const mandate = Number(big(await call(vault, SEL.mandate)));
+    quoteBal = big(await call(window.WS.usdg, SEL.balanceOf + pad(vault)));
+    const cash = Number(quoteBal) / 10 ** window.WS.usdgDecimals;
+
+    $("title").textContent = "Desk " + vault.slice(2, 8).toUpperCase();
+    $("mandate").innerHTML = window.SECTORS.filter((s) => mandate & (1 << s.i))
+      .map((s) => `<span class="pill"><span class="swatch" style="background:${s.colour}"></span>${s.name}</span>`)
+      .join(" ") || '<span class="empty">No sectors — this desk cannot trade at all.</span>';
+
+    const allowed = window.TOKENS.filter((t) => mandate & (1 << t.sector));
+    held = [];
+    let book = cash;
+    for (const t of allowed) {
+      const bal = big(await call(t.address, SEL.balanceOf + pad(vault)));
+      if (bal === 0n) continue;
+      let px = 0;
+      try { px = price(await call(t.pool, SEL.slot0), t.address, window.WS.usdg, t.decimals, window.WS.usdgDecimals); } catch {}
+      const qty = Number(bal) / 10 ** t.decimals;
+      held.push({ ...t, bal, qty, px, usd: qty * px });
+      book += qty * px;
+    }
+
+    $("book").textContent = usd(book);
+    $("cash").textContent = usd(cash);
+    $("npos").textContent = held.length;
+    $("positions").innerHTML = held.length
+      ? '<table><tr><th>Stock</th><th class="r">Quantity</th><th class="r">Price</th><th class="r">Value</th></tr>' +
+        held.map((h) => {
+          const s = window.SECTORS[h.sector];
+          return `<tr><td><span class="swatch" style="background:${s.colour}"></span><b>$${h.symbol}</b>` +
+            `<span class="empty"> ${s.name}</span></td>` +
+            `<td class="r">${h.qty.toFixed(4)}</td><td class="r">${h.px ? "$" + h.px.toPrecision(6) : "—"}</td>` +
+            `<td class="r">${usd(h.usd)}</td></tr>`;
+        }).join("") + "</table>"
+      : '<p class="empty">Flat — everything is in cash.</p>';
+
+    $("booknote").textContent = "agent " + agent.slice(0, 10) + "…";
+    // Owner-only controls appear only once a wallet that is the owner connects.
+    if (window.ethereum) {
+      const [acct] = await window.ethereum.request({ method: "eth_accounts" }).catch(() => []);
+      if (acct && acct.toLowerCase() === owner.toLowerCase()) $("wrow").hidden = false;
+      else $("ownnote").textContent +=
+        " This desk belongs to " + owner.slice(0, 10) + "… — connect that wallet to withdraw.";
+    }
+  }
+
+  const send = async (data, what) => {
+    try {
+      const [from] = await window.ethereum.request({ method: "eth_requestAccounts" });
+      if (from.toLowerCase() !== owner.toLowerCase()) return st("That wallet does not own this desk.", "err");
+      st("Confirm in your wallet…");
+      const hash = await window.ethereum.request({ method: "eth_sendTransaction",
+        params: [{ from, to: vault, data }] });
+      $("status").innerHTML = what + ` — <a href="${window.WS.explorer}/tx/${hash}" target="_blank" rel="noopener">view transaction</a>`;
+      $("status").className = "status ok";
+      setTimeout(load, 4000);
+    } catch (e) {
+      const m = (e && (e.message || String(e))) || "unknown";
+      st(/reject|denied/i.test(m) ? "Cancelled in wallet." : "Failed: " + m.slice(0, 160), "err");
+    }
+  };
+
+  $("wcash").addEventListener("click", () =>
+    send(SEL.withdrawAll + pad(window.WS.usdg), "Cash withdrawn"));
+
+  // Everything means every position too, so it is one transaction per token.
+  // Sequential rather than batched: a vault with no multicall would need one
+  // anyway, and each is independently retryable if a wallet drops one.
+  $("wall").addEventListener("click", async () => {
+    if (held.length) {
+      for (const h of held) await send(SEL.withdrawAll + pad(h.address), "Withdrew $" + h.symbol);
+    }
+    await send(SEL.withdrawAll + pad(window.WS.usdg), "Cash withdrawn");
+  });
+
+  load().catch((e) => st("Could not read this desk: " + e.message, "err"));
+})();
+</script>
+
+<script>
+/* Same session rule as the floor and the homepage, so no two pages can
+   disagree about what time it is. */
+(() => {
+  const el = document.getElementById("wsclock");
+  if (!el) return;
+  const tick = () => {
+    const et = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
+    const day = et.getDay(), m = et.getHours() * 60 + et.getMinutes();
+    let n = "Overnight", cls = "closed", end = null;
+    if (day === 0 || day === 6) { n = "Weekend"; }
+    else if (m >= 240 && m < 570)  { n = "Pre-market";  cls = "thin"; end = 570; }
+    else if (m >= 570 && m < 960)  { n = "Open";        cls = "";     end = 960; }
+    else if (m >= 960 && m < 1200) { n = "After hours"; cls = "thin"; end = 1200; }
+    el.className = "clock " + cls;
+    let t = n;
+    if (end) {
+      const left = end - m;
+      if (left > 0) t += " · " + (left >= 60 ? Math.floor(left / 60) + "h " : "") + (left % 60) + "m left";
+    }
+    document.getElementById("wsclock-t").textContent = t;
+  };
+  tick(); setInterval(tick, 20000);
+})();
+</script>
+</body>
+</html>

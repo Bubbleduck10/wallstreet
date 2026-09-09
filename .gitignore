@@ -1,0 +1,6 @@
+# Only the site is published. Nothing else from the project belongs here —
+# no contracts, no broadcast history, no agent state, and never a key.
+*.key
+agent/
+broadcast/
+.DS_Store

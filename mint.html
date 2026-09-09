@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WallStreet — hire a desk</title>
+<style>
+  :root {
+    /* The floor's palette. Same token names the light version used, so the
+       rules below did not have to change — only what the names mean. */
+    --ink: #e8e4dc; --ink-soft: #9aa4ae; --ink-faint: #8c96a1;
+    --paper: #1b2026; --panel: #232a31; --line: #333c45; --line-2: #3d474f;
+    --accent: #4ea36a; --accent-soft: #1d2b23;
+    --warn: #d2a33c; --warn-soft: #251f18; --bad: #dd7d6b;
+    --desk: #d9cdb8; --carpet: #6f7d8c; --field: #1a1f25;
+    --page: 780px;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --serif: -apple-system, "Segoe UI", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  /* .row and .ack set display, which beats the UA stylesheet rule for [hidden]
+     — so the key buttons showed before there was a key. */
+  [hidden] { display: none !important; }
+  body { margin: 0; background: var(--paper); color: var(--ink);
+         font: 15px/1.55 -apple-system, "Segoe UI", system-ui, sans-serif; }
+  .wrap { max-width: var(--page); margin: 0 auto; padding: 36px 24px 80px; }
+  h1 { font: 400 34px/1.1 var(--serif); margin: 0 0 8px; letter-spacing: -.01em; }
+  .lede { color: var(--ink-soft); margin: 0 0 36px; max-width: 54ch; }
+  h2 { font: 400 20px/1.2 var(--serif); margin: 0 0 4px; }
+  .step { border: 1px solid var(--line); border-radius: 10px; background: var(--panel);
+          padding: 22px 24px; margin-bottom: 18px; }
+  .step > .n { font: 500 11px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase;
+               color: var(--ink-faint); margin-bottom: 10px; }
+  .hint { font-size: 13.5px; color: var(--ink-soft); margin: 6px 0 0; }
+  label.f { display: block; font-size: 13px; font-weight: 600; margin: 16px 0 6px; }
+  input[type=text], input[type=number] {
+    width: 100%; height: 42px; padding: 0 12px; font: 15px/1 inherit;
+    border: 1px solid var(--line); border-radius: 7px; background: var(--field); color: var(--ink); }
+  input:focus { outline: 0; border-color: var(--ink); }
+
+  .sectors { display: grid; grid-template-columns: repeat(auto-fill, minmax(228px, 1fr)); gap: 8px; margin-top: 14px; }
+  .sec { display: flex; gap: 10px; align-items: flex-start; padding: 9px 11px;
+         border: 1px solid var(--line); border-radius: 8px; cursor: pointer; background: var(--field);
+         transition: border-color .12s, background .12s; }
+  .sec:hover { border-color: var(--ink-faint); }
+  .sec.on { border-color: var(--accent); background: var(--accent-soft); }
+  .sec input { margin: 3px 0 0; accent-color: var(--accent); }
+  .sec .swatch { width: 9px; height: 9px; border-radius: 2px; margin: 6px 0 0; flex: none; }
+  .sec b { display: block; font-size: 13.5px; font-weight: 600; }
+  .sec span { display: block; font: 11px/1.35 var(--mono); color: var(--ink-faint); word-spacing: 2px; }
+
+  .summary { margin-top: 16px; padding: 12px 14px; border-radius: 8px;
+             background: var(--accent-soft); font-size: 13.5px; }
+  .summary.none { background: var(--field); color: var(--ink-soft); }
+
+  .keybox { margin-top: 14px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .keyrow { display: flex; justify-content: space-between; gap: 12px; padding: 11px 13px;
+            border-bottom: 1px solid var(--line); font: 12.5px/1.4 var(--mono); word-break: break-all; }
+  .keyrow:last-child { border-bottom: 0; }
+  .keyrow .k { color: var(--ink-faint); flex: none; }
+  .warnbox { margin-top: 14px; padding: 13px 15px; border-radius: 8px;
+             background: var(--warn-soft); border: 1px solid #4a3c26; font-size: 13.5px; }
+  .warnbox b { color: var(--warn); }
+  .ack { display: flex; gap: 9px; align-items: flex-start; margin-top: 13px; font-size: 13.5px; }
+  .ack input { margin-top: 3px; accent-color: var(--accent); }
+
+  button { font: 500 14px/1 inherit; padding: 0 18px; height: 42px; border-radius: 7px;
+           border: 1px solid #c3b79f; background: var(--desk); color: #23282e; cursor: pointer;
+           font-weight: 600; }
+  button.ghost { background: var(--field); color: var(--ink); }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 16px; }
+  .status { font-size: 13.5px; color: var(--ink-soft); margin-top: 12px; min-height: 20px; }
+  .status.err { color: var(--bad); }
+  .status.ok { color: var(--accent); font-weight: 600; }
+  a { color: var(--accent); }
+
+  /* shared chrome ---------------------------------------------------- */
+  .topbar { border-bottom: 1px solid var(--line); background: var(--paper);
+            position: sticky; top: 0; z-index: 20; }
+  .topbar .in { max-width: var(--page); margin: 0 auto; padding: 0 24px; height: 60px;
+                display: flex; align-items: center; justify-content: space-between; }
+  .topbar .mark { font: 600 18px/1 var(--serif); letter-spacing: -.02em;
+                  text-decoration: none; color: var(--ink); }
+  .topbar .mark em { font-style: normal; color: var(--carpet); }
+  .topbar nav { display: flex; gap: 20px; align-items: center; font-size: 14px; }
+  .topbar nav a { color: var(--ink-soft); text-decoration: none; }
+  .topbar nav a:hover { color: var(--ink); }
+  .topbar .clock { font: 12px/1 var(--mono); color: var(--ink-soft); display: flex;
+                   align-items: center; gap: 7px; padding: 6px 11px;
+                   border: 1px solid var(--line-2); border-radius: 999px; }
+  .topbar .clock i { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+  .topbar .clock.closed i { background: var(--ink-faint); }
+  .topbar .clock.thin i { background: var(--warn); }
+</style>
+</head>
+<body>
+<div class="topbar"><div class="in">
+  <a class="mark" href="./">Wall<em>Street</em></a>
+  <nav>
+    <a href="./floor.html">The floor</a>
+    <a href="./mint.html" style="color:var(--ink)">Hire a desk</a>
+    <span class="clock" id="wsclock"><i></i><span id="wsclock-t">—</span></span>
+  </nav>
+</div></div>
+<div class="wrap">
+  <h1>Hire a desk</h1>
+  <p class="lede">Fund an agent and tick what it may trade. It trades your book from a vault
+  that has no function capable of paying it, you, or anyone else — only you can withdraw, and
+  you can do it at any time, including with positions open.</p>
+
+  <div class="step">
+    <div class="n">Step 1 — the mandate</div>
+    <h2>What may it trade?</h2>
+    <p class="hint">Written into the vault when you fund it and enforced by the contract on
+    every swap. An off-mandate trade does not fail politely — it does not exist.</p>
+    <div class="sectors" id="sectors"></div>
+    <div class="summary none" id="summary">Nothing ticked yet.</div>
+  </div>
+
+  <div class="step">
+    <div class="n">Step 2 — the money</div>
+    <h2>How much is it trading?</h2>
+    <p class="hint">USDG, from your wallet straight to the vault. The factory never holds it,
+    not even for one call.</p>
+    <label class="f" for="amt">Amount in USDG</label>
+    <input id="amt" type="number" min="100" step="1" placeholder="500" value="500">
+    <p class="hint">Minimum <b>100 USDG</b>. Below about that the round trip costs more than the
+    position can plausibly make — a 1% pool fee each way plus gas, in books that mostly hold
+    under a million dollars.</p>
+    <p class="hint" style="margin-top:8px">A desk holds <b>three positions</b> at once. Holding
+    <b>$WALL</b> buys more: every 250,000 held is another slot, up to eight.</p>
+  </div>
+
+  <div class="step">
+    <div class="n">Step 3 — the key</div>
+    <h2>Your agent&rsquo;s key</h2>
+    <p class="hint">Generated here, in this page, and never sent anywhere. It is what lets your
+    agent trade — you hold it, we never see it.</p>
+    <div class="row"><button class="ghost" id="gen" type="button">Generate a key</button></div>
+    <div class="keybox" id="keybox" hidden>
+      <div class="keyrow"><span class="k">address</span><span id="kaddr"></span></div>
+      <div class="keyrow"><span class="k">private key</span><span id="kpriv"></span></div>
+    </div>
+    <div class="warnbox" id="keywarn" hidden>
+      <b>Save this now.</b> It is shown once. Losing it costs the ability to trade, not the
+      money — your funds stay withdrawable whatever happens to this key. Anyone who has it can
+      trade your desk within its mandate, and cannot do anything else with it.
+    </div>
+    <div class="row" id="keyacts" hidden>
+      <button class="ghost" id="dl" type="button">Download agent.key</button>
+      <button class="ghost" id="copy" type="button">Copy</button>
+    </div>
+    <label class="ack" id="ackrow" hidden>
+      <input type="checkbox" id="ack">
+      <span>I have saved the private key somewhere I will still have it tomorrow.</span>
+    </label>
+  </div>
+
+  <div class="step">
+    <div class="n">Step 4 — open the desk</div>
+    <h2>Commission it</h2>
+    <p class="hint">Two transactions: one to approve the USDG, one to open the desk.</p>
+    <div class="row">
+      <button id="go" type="button" disabled>Connect wallet &amp; commission</button>
+    </div>
+    <p class="status" id="status"></p>
+  </div>
+</div>
+
+<script src="sectors.js"></script>
+<script type="module">
+import { generateAgent } from "./vendor/keygen.js";
+
+const $ = (id) => document.getElementById(id);
+const st = (m, k) => { const e = $("status"); e.textContent = m; e.className = "status " + (k || ""); };
+
+/* ---- mandate ---- */
+let mandate = 0;
+const grid = $("sectors");
+for (const s of window.SECTORS) {
+  const el = document.createElement("label");
+  el.className = "sec";
+  el.innerHTML =
+    `<input type="checkbox" data-bit="${s.i}">` +
+    `<span class="swatch" style="background:${s.colour}"></span>` +
+    `<span><b>${s.name}</b><span>${s.tickers.join(" ")}</span></span>`;
+  grid.appendChild(el);
+}
+grid.addEventListener("change", () => {
+  mandate = 0;
+  for (const cb of grid.querySelectorAll("input")) {
+    cb.closest(".sec").classList.toggle("on", cb.checked);
+    if (cb.checked) mandate |= 1 << Number(cb.dataset.bit);
+  }
+  const names = window.SECTORS.filter((s) => mandate & (1 << s.i)).map((s) => s.name);
+  const n = names.length;
+  const box = $("summary");
+  box.className = "summary" + (n ? "" : " none");
+  box.textContent = n
+    ? `It may trade ${names.join(", ")} — and nothing else, ever.`
+    : "Nothing ticked yet.";
+  refresh();
+});
+
+/* ---- key ---- */
+let key = null;
+$("gen").addEventListener("click", () => {
+  key = generateAgent();
+  $("kaddr").textContent = key.address;
+  $("kpriv").textContent = key.privateKey;
+  for (const id of ["keybox", "keywarn", "keyacts", "ackrow"]) $(id).hidden = false;
+  $("gen").textContent = "Generate a different key";
+  $("ack").checked = false;
+  refresh();
+});
+$("ack").addEventListener("change", refresh);
+$("dl").addEventListener("click", () => {
+  // A plain file, because the runner reads a plain file. No wrapper, no JSON,
+  // nothing to unwrap later at the moment somebody is already stressed.
+  const blob = new Blob([key.privateKey + "\n"], { type: "text/plain" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "agent.key";
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+$("copy").addEventListener("click", async () => {
+  await navigator.clipboard.writeText(key.privateKey);
+  $("copy").textContent = "Copied";
+  setTimeout(() => ($("copy").textContent = "Copy"), 1400);
+});
+
+/* ---- chain ---- */
+const pad = (a) => a.toLowerCase().replace(/^0x/, "").padStart(64, "0");
+const padN = (n) => BigInt(n).toString(16).padStart(64, "0");
+const SEL = { approve: "0x095ea7b3", commission: "0xf05b6c0f", balanceOf: "0x70a08231" };
+
+/* The contract enforces this too — the page is not the only way to call it —
+   but rejecting it here means a clearer message than a revert. */
+const MIN_USDG = 100;
+const amountRaw = () => {
+  const v = Number($("amt").value);
+  if (!isFinite(v) || v < MIN_USDG) return 0n;
+  return BigInt(Math.round(v * 10 ** window.WS.usdgDecimals));
+};
+
+function refresh() {
+  $("go").disabled = !(mandate > 0 && key && $("ack").checked && amountRaw() > 0n && window.WS.factory);
+  if (!window.WS.factory) st("The floor has not been deployed yet — set WS.factory in sectors.js.", "err");
+}
+$("amt").addEventListener("input", refresh);
+
+$("go").addEventListener("click", async () => {
+  const eth = window.ethereum;
+  if (!eth) return st("No wallet found. Install a browser wallet and reload.", "err");
+  try {
+    st("Connecting…");
+    const [from] = await eth.request({ method: "eth_requestAccounts" });
+    const want = "0x" + window.WS.chainId.toString(16);
+    if (await eth.request({ method: "eth_chainId" }) !== want) {
+      st("Switching network…");
+      await eth.request({ method: "wallet_switchEthereumChain", params: [{ chainId: want }] });
+    }
+    const amt = amountRaw();
+
+    st("Approving USDG — confirm in your wallet…");
+    await eth.request({ method: "eth_sendTransaction", params: [{
+      from, to: window.WS.usdg, data: SEL.approve + pad(window.WS.factory) + padN(amt) }] });
+
+    st("Opening the desk — confirm in your wallet…");
+    const hash = await eth.request({ method: "eth_sendTransaction", params: [{
+      from, to: window.WS.factory,
+      data: SEL.commission + pad(key.address) + padN(mandate) + padN(amt) }] });
+
+    $("status").innerHTML =
+      `Desk opened. <a href="${window.WS.explorer}/tx/${hash}" target="_blank" rel="noopener">view transaction</a>. ` +
+      `Point the runner at it with your key to start trading.`;
+    $("status").className = "status ok";
+  } catch (e) {
+    const m = (e && (e.message || String(e))) || "unknown error";
+    st(/reject|denied/i.test(m) ? "Cancelled in wallet." : "Failed: " + m.slice(0, 180), "err");
+  }
+});
+
+refresh();
+</script>
+
+<script>
+/* Same session rule as the floor and the homepage, so no two pages can
+   disagree about what time it is. */
+(() => {
+  const el = document.getElementById("wsclock");
+  if (!el) return;
+  const tick = () => {
+    const et = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
+    const day = et.getDay(), m = et.getHours() * 60 + et.getMinutes();
+    let n = "Overnight", cls = "closed", end = null;
+    if (day === 0 || day === 6) { n = "Weekend"; }
+    else if (m >= 240 && m < 570)  { n = "Pre-market";  cls = "thin"; end = 570; }
+    else if (m >= 570 && m < 960)  { n = "Open";        cls = "";     end = 960; }
+    else if (m >= 960 && m < 1200) { n = "After hours"; cls = "thin"; end = 1200; }
+    el.className = "clock " + cls;
+    let t = n;
+    if (end) {
+      const left = end - m;
+      if (left > 0) t += " · " + (left >= 60 ? Math.floor(left / 60) + "h " : "") + (left % 60) + "m left";
+    }
+    document.getElementById("wsclock-t").textContent = t;
+  };
+  tick(); setInterval(tick, 20000);
+})();
+</script>
+</body>
+</html>

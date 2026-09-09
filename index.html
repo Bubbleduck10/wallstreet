@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WallStreet — trading desks that cannot take your money</title>
+<meta name="description" content="Fund an agent, tick what it may trade, and it trades your book from a vault with no function capable of paying it, you, or anyone else.">
+<style>
+  /* The floor's own palette. The site used to be cream paper and a serif, and
+     read as a different product to the thing it was selling. */
+  :root {
+    --bg:        #1b2026;
+    --bg-2:      #232a31;
+    --room:      #2f363d;
+    --carpet:    #6f7d8c;
+    --desk:      #d9cdb8;
+    --line:      #333c45;
+    --line-2:    #3d474f;
+    --ink:       #e8e4dc;
+    --ink-soft:  #9aa4ae;
+    --ink-faint: #8c96a1;
+    --pos:       #4ea36a;
+    --research:  #d2a33c;
+    --stale:     #b8503f;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, "Segoe UI", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 15px/1.65 var(--sans); -webkit-font-smoothing: antialiased; }
+  a { color: inherit; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 28px; }
+
+  /* ---------- the tape ---------- */
+  .tape { position: sticky; top: 0; z-index: 30; background: #12171c;
+          border-bottom: 1px solid var(--line); overflow: hidden; height: 40px; }
+  .tape-in { display: flex; gap: 30px; align-items: center; height: 40px;
+             white-space: nowrap; will-change: transform;
+             animation: roll 90s linear infinite; }
+  .tape:hover .tape-in { animation-play-state: paused; }
+  @keyframes roll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+  @media (prefers-reduced-motion: reduce) { .tape-in { animation: none; } }
+  .tk { font: 12.5px/1 var(--mono); display: inline-flex; align-items: baseline; gap: 7px; }
+  .tk b { font-weight: 600; letter-spacing: .02em; }
+  .tk span { color: var(--ink-soft); }
+  .tk i { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+  .tape.loading .tape-in { animation: none; }
+  .tape .waiting { font: 12.5px/1 var(--mono); color: var(--ink-faint); padding-left: 28px; }
+
+  /* ---------- header ---------- */
+  header { border-bottom: 1px solid var(--line); background: var(--bg); }
+  header .wrap { display: flex; align-items: center; justify-content: space-between; height: 64px; }
+  .mark { font: 600 19px/1 var(--sans); letter-spacing: -.02em; text-decoration: none; }
+  .mark em { font-style: normal; color: var(--carpet); }
+  nav { display: flex; gap: 22px; font-size: 14px; align-items: center; }
+  nav a { color: var(--ink-soft); text-decoration: none; }
+  nav a:hover { color: var(--ink); }
+  .clock { font: 12px/1 var(--mono); color: var(--ink-soft); display: flex;
+           align-items: center; gap: 7px; padding: 6px 11px; border: 1px solid var(--line-2);
+           border-radius: 999px; }
+  .clock i { width: 7px; height: 7px; border-radius: 50%; background: var(--pos); }
+  .clock.closed i { background: var(--ink-faint); }
+  .clock.thin  i { background: var(--research); }
+
+  /* ---------- hero ---------- */
+  .hero { position: relative; border-bottom: 1px solid var(--line); overflow: hidden; }
+  .hero canvas { position: absolute; inset: 0; width: 100%; height: 100%;
+                 object-fit: cover; opacity: .5; }
+  .hero .veil { position: absolute; inset: 0;
+    background:
+      linear-gradient(90deg, var(--bg) 2%, rgba(27,32,38,.93) 52%, rgba(27,32,38,.62) 100%),
+      linear-gradient(180deg, rgba(27,32,38,.55) 0%, rgba(27,32,38,0) 30%, rgba(27,32,38,.75) 100%); }
+  .hero .wrap { position: relative; padding-top: 92px; padding-bottom: 84px; }
+  h1 { font: 600 clamp(38px, 5.4vw, 62px)/1.04 var(--sans);
+       letter-spacing: -.035em; margin: 0 0 20px; max-width: 15em; }
+  /* The emphasis word is the whole claim, so it gets the brightest thing on
+     the page rather than a dimmer grey. */
+  h1 em { font-style: normal; color: var(--desk);
+          text-decoration: underline; text-decoration-thickness: 3px;
+          text-underline-offset: 7px; text-decoration-color: #8a7c62; }
+  .lede { font-size: 18px; color: var(--ink-soft); max-width: 34em; margin: 0; }
+  .cta { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 30px; }
+  .btn { display: inline-flex; align-items: center; height: 44px; padding: 0 22px;
+         border-radius: 8px; background: var(--desk); color: #23282e; text-decoration: none;
+         font-size: 15px; font-weight: 600; border: 1px solid #c3b79f; }
+  .btn:hover { background: #e6dcca; }
+  .btn.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line-2); }
+  .btn.ghost:hover { border-color: var(--carpet); }
+  .fine { font: 12px/1.5 var(--mono); color: var(--ink-faint); }
+
+  /* ---------- sections ---------- */
+  section { padding: 58px 0; border-bottom: 1px solid var(--line); }
+  h2 { font: 600 25px/1.2 var(--sans); letter-spacing: -.025em; margin: 0 0 10px; }
+  .eyebrow { font: 11px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase;
+             color: var(--ink-faint); margin-bottom: 14px; }
+  p { max-width: 40em; color: var(--ink-soft); }
+  p b, p strong { color: var(--ink); font-weight: 600; }
+  code { font: 12.5px/1.5 var(--mono); background: var(--bg-2); color: var(--ink);
+         padding: 2px 6px; border-radius: 5px; border: 1px solid var(--line); }
+  pre { font: 12.5px/1.7 var(--mono); background: var(--bg-2); border: 1px solid var(--line);
+        padding: 18px 20px; border-radius: 10px; overflow-x: auto; color: var(--ink); }
+
+  /* absent-functions list, as a terminal receipt */
+  .absent { margin-top: 24px; border: 1px solid var(--line); border-radius: 10px;
+            background: var(--bg-2); overflow: hidden; }
+  .absent .row { display: flex; gap: 14px; padding: 14px 18px; border-bottom: 1px solid var(--line);
+                 font-size: 14.5px; align-items: baseline; }
+  .absent .row:last-child { border-bottom: 0; }
+  .absent .x { font: 12px/1.5 var(--mono); color: var(--stale); flex: none; width: 74px; }
+  .absent .row div { color: var(--ink-soft); }
+  .absent .row b { color: var(--ink); font-weight: 600; }
+
+  /* sector grid */
+  /* align-items:start so a sector with two tickers is a short card, not a tall
+     one padded out to match Semiconductors' seven. */
+  .sectors { display: grid; grid-template-columns: repeat(auto-fill, minmax(232px, 1fr));
+             gap: 10px; margin-top: 24px; align-items: start; }
+  .sec { border: 1px solid var(--line); border-radius: 10px; padding: 13px 15px;
+         background: var(--bg-2); }
+  .sec .h { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; }
+  .sec .h i { width: 9px; height: 9px; border-radius: 2px; flex: none; }
+  .sec ul { list-style: none; margin: 10px 0 0; padding: 0;
+            font: 12px/1.9 var(--mono); color: var(--ink-faint); }
+  .sec li { display: flex; justify-content: space-between; gap: 10px; }
+  .sec li b { color: var(--ink-soft); font-weight: 400; }
+  .sec li span { color: var(--ink-faint); }
+
+  /* ---------- the replay terminal ---------- */
+  .term { margin-top: 24px; border: 1px solid var(--line); border-radius: 10px;
+          background: #12171c; overflow: hidden; }
+  .term-bar { display: flex; align-items: center; gap: 9px; padding: 10px 14px;
+              border-bottom: 1px solid var(--line); font: 11.5px/1 var(--mono);
+              color: var(--ink-faint); }
+  .term-bar i { width: 9px; height: 9px; border-radius: 50%; background: #3d474f; }
+  .term-bar b { color: var(--ink-soft); font-weight: 400; margin-left: 4px; }
+  .term-bar .re { margin-left: auto; color: var(--ink-faint); cursor: pointer;
+                  border: 1px solid var(--line-2); border-radius: 5px; padding: 3px 9px; }
+  .term-bar .re:hover { color: var(--ink); border-color: var(--carpet); }
+  .term pre { margin: 0; border: 0; border-radius: 0; background: transparent;
+              padding: 16px 18px; min-height: 316px; font-size: 12.5px; line-height: 1.85; }
+  .term .k { color: var(--ink-faint); }
+  .term .g { color: #6ec98a; }
+  .term .y { color: #e0b45c; }
+  .term .r { color: #e07a6a; }
+  .term .w { color: var(--ink); }
+  .term .cur { display: inline-block; width: 7px; height: 14px; background: var(--desk);
+               vertical-align: -2px; animation: blink 1.05s step-end infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+          gap: 26px; margin-top: 24px; }
+  .cols h3 { font: 600 15px/1.3 var(--sans); margin: 0 0 6px; color: var(--ink); }
+  .cols p { font-size: 14px; margin: 0; }
+
+  .warn { background: #251f18; border: 1px solid #4a3c26; border-radius: 10px;
+          padding: 18px 20px; margin-top: 22px; font-size: 14.5px; }
+  .warn p { color: #cbbb9c; margin: 0 0 10px; max-width: none; }
+  .warn p:last-child { margin: 0; }
+  .warn b { color: #e8d3a4; }
+
+  footer { padding: 30px 0 60px; font: 12.5px/1.7 var(--mono); color: var(--ink-faint); }
+  footer p { max-width: 62em; color: var(--ink-faint); margin: 0 0 8px; }
+</style>
+</head>
+<body>
+
+<div class="tape loading" id="tape"><div class="tape-in" id="tapein">
+  <span class="waiting">reading 44 pools from chain…</span>
+</div></div>
+
+<header><div class="wrap">
+  <a class="mark" href="./">Wall<em>Street</em></a>
+  <nav>
+    <a href="./floor.html">The floor</a>
+    <a href="./mint.html">Hire a desk</a>
+    <span class="clock" id="clock"><i></i><span id="clock-t">—</span></span>
+  </nav>
+</div></header>
+
+<div class="hero">
+  <canvas id="heroFloor"></canvas>
+  <div class="veil"></div>
+  <div class="wrap">
+    <h1>Trading desks that <em>cannot</em> take your money.</h1>
+    <p class="lede">Fund an agent and tick which sectors it may trade. It trades your book from a
+    vault with no function capable of paying it, you, or anybody else — only you can withdraw,
+    and you can do it whenever you like, including with positions open.</p>
+    <div class="cta">
+      <a class="btn" href="./mint.html">Hire a desk</a>
+      <a class="btn ghost" href="./floor.html">See the floor</a>
+      <span class="fine">Robinhood Chain · 44 tickers · 16 sectors · from 100 USDG</span>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <section>
+    <p class="eyebrow">The guarantee</p>
+    <h2>What the agent cannot do</h2>
+    <p>An agent can do exactly one thing with your money: swap it between USDG and a tokenised
+    stock whose sector you ticked. Everything else is not restricted — it is <b>missing</b>.</p>
+    <div class="absent">
+      <div class="row"><span class="x">absent</span><div><b>transfer</b> — it cannot send your money anywhere.</div></div>
+      <div class="row"><span class="x">absent</span><div><b>withdraw</b> — that is yours alone, and always available.</div></div>
+      <div class="row"><span class="x">absent</span><div><b>arbitrary approve</b> — the only spender is a router fixed at construction, and its allowance is set back to zero after every trade.</div></div>
+      <div class="row"><span class="x">absent</span><div><b>owner change</b> — owner and agent are both immutable, because a setter is a key worth stealing.</div></div>
+    </div>
+    <p style="margin-top:20px"><b>So a strategy can lose money. It cannot take it.</b></p>
+  </section>
+
+  <section>
+    <p class="eyebrow">The universe</p>
+    <h2>Sixteen sectors, forty-four tickers</h2>
+    <p>Tick the sectors your agent may trade. The mandate is written into the vault when you fund
+    it and checked by the contract on every swap — an off-mandate trade does not fail politely, it
+    does not exist. Prices below are read live from each pool, not from a feed.</p>
+    <div class="sectors" id="sectors"></div>
+  </section>
+
+  <section>
+    <p class="eyebrow">How it works</p>
+    <h2>You hold the key, you write the strategy</h2>
+    <div class="cols">
+      <div>
+        <h3>You set the mandate</h3>
+        <p>Sixteen sectors; tick the ones it may trade. Checked on chain, every swap.</p>
+      </div>
+      <div>
+        <h3>You hold the key</h3>
+        <p>The agent key is generated in your browser and never sent anywhere. Losing it costs the
+        ability to trade, not the money.</p>
+      </div>
+      <div>
+        <h3>You write the strategy</h3>
+        <p>One function that looks at the book and says what it wants. The runner does pricing,
+        sizing, slippage and signing.</p>
+      </div>
+    </div>
+<pre>export function decide(ctx) {
+  if (ctx.holdings.length &gt;= 3) return null;
+  const pick = ctx.universe.find((t) =&gt; t.held === 0n);
+  return { action: "open", symbol: pick.symbol, usd: ctx.cashUsd / 4 };
+}</pre>
+
+    <p style="margin-top:34px">This is what running it looks like. Not a mock-up — a replay of an
+    actual cycle against a fork of Robinhood Chain, including the part where a strategy is told
+    <b>no</b>.</p>
+    <div class="term">
+      <div class="term-bar">
+        <i></i><i></i><i></i>
+        <b>node agent/runner.mjs --vault 0x7A2c…9E41 --strategy ./my-strategy.mjs</b>
+        <span class="re" id="replay">replay</span>
+      </div>
+      <pre id="log"></pre>
+    </div>
+  </section>
+
+  <section>
+    <p class="eyebrow">$WALL</p>
+    <h2>Capacity, not access</h2>
+    <p>Hiring a desk burns <b>100,000 $WALL</b> — to <code>0x…dEaD</code>, not to a treasury and
+    not to us. The factory never holds the token for a moment, so there is nothing to claim later
+    and no address anyone has to trust.</p>
+    <p>A desk runs three positions at once; every <b>250,000 $WALL</b> its owner holds is another
+    slot, to a maximum of eight. Move the tokens and the capacity moves with them.</p>
+    <p><b>None of this is live yet.</b> The floor runs today with no fee and three positions per
+    desk, because a launchpad should not be blocked on a token launch.</p>
+  </section>
+
+  <section>
+    <p class="eyebrow">The clock</p>
+    <h2>It knows what time it is</h2>
+    <p>The chain never closes, but the market these stocks track does. Desks trade through every
+    session — and outside regular hours the runner cuts size and widens its slippage guard,
+    because the same order moves a thin book much further.</p>
+    <p>The floor shows it: lit and busy at the open, thinning after hours, and dark overnight with
+    desk lamps and screen-glow as the only light.</p>
+  </section>
+
+  <section>
+    <p class="eyebrow">Read this part</p>
+    <h2>What we do not control</h2>
+    <div class="warn">
+      <p><b>These are real trades in thin markets.</b> Most of these pools hold well under a
+      million dollars, so a large order moves the price against itself. Size is not a detail here.</p>
+      <p><b>An agent can lose everything you give it.</b> The vault stops it taking your money.
+      Nothing stops it trading badly, including a strategy you wrote yourself.</p>
+      <p><b>The contracts have not been audited.</b> They compile, they are covered by 28 tests,
+      and the guarantees above were re-checked against a fork of mainnet. That is not the same
+      thing as an audit and should not be read as one.</p>
+    </div>
+  </section>
+
+</div>
+
+<footer><div class="wrap">
+  <p>These are memecoin-adjacent instruments on an experimental chain, not securities, and nothing
+  here is financial advice. Expect to lose what you put in.</p>
+  <p>Tokenised stocks are Robinhood tokens trading in Uniswap v3 pools on Robinhood Chain.
+  WallStreet is not affiliated with, endorsed by, or connected to Robinhood Markets, Inc., nor with
+  any company whose stock is tokenised here.</p>
+</div></footer>
+
+<script src="sectors.js"></script>
+<script src="prices.js"></script>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const SEC = window.SECTORS || [];
+  const TOK = window.TOKENS || [];
+  const colourOf = (i) => (SEC[i] || {}).colour || "#9aa2ad";
+
+  /* ---------- session clock ---------- */
+  /* Same rule the floor uses, so the two never disagree about the hour. */
+  const sessionNow = () => {
+    const now = new Date();
+    const et = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }));
+    const day = et.getDay();
+    const mins = et.getHours() * 60 + et.getMinutes();
+    if (day === 0 || day === 6) return { k: "weekend", n: "Weekend", cls: "closed" };
+    if (mins >= 240 && mins < 570)  return { k: "pre",     n: "Pre-market",  cls: "thin", end: 570 };
+    if (mins >= 570 && mins < 960)  return { k: "regular", n: "Open",        cls: "",     end: 960 };
+    if (mins >= 960 && mins < 1200) return { k: "after",   n: "After hours", cls: "thin", end: 1200 };
+    return { k: "overnight", n: "Overnight", cls: "closed" };
+  };
+  const tickClock = () => {
+    const s = sessionNow();
+    const el = $("clock");
+    el.className = "clock " + s.cls;
+    let t = s.n;
+    if (s.end) {
+      const et = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
+      const left = s.end - (et.getHours() * 60 + et.getMinutes());
+      if (left > 0) t += " · " + (left >= 60 ? Math.floor(left / 60) + "h " : "") + (left % 60) + "m left";
+    }
+    $("clock-t").textContent = t;
+  };
+  tickClock(); setInterval(tickClock, 20000);
+
+  /* ---------- sector grid ---------- */
+  const cell = (t) =>
+    `<li><b>${t.symbol}</b><span data-px="${t.symbol}">·</span></li>`;
+  $("sectors").innerHTML = SEC.map((s) => {
+    const mine = TOK.filter((t) => t.sector === s.i)
+      .sort((a, b) => b.depthUsd - a.depthUsd);
+    return `<div class="sec">
+      <div class="h"><i style="background:${s.colour}"></i>${s.name}</div>
+      <ul>${mine.map(cell).join("")}</ul>
+    </div>`;
+  }).join("");
+
+  /* ---------- the tape ---------- */
+  const tapeItem = (t, px) =>
+    `<span class="tk"><i style="background:${colourOf(t.sector)}"></i>` +
+    `<b>${t.symbol}</b><span>${window.WSPrices.fmt(px)}</span></span>`;
+
+  const paintPrice = (sym, px) => {
+    document.querySelectorAll(`[data-px="${sym}"]`)
+      .forEach((el) => { el.textContent = window.WSPrices.fmt(px); });
+  };
+
+  (async () => {
+    let prices;
+    try {
+      prices = await window.WSPrices.readAll(TOK, paintPrice);
+    } catch { prices = new Map(); }
+    if (!prices.size) {
+      $("tapein").innerHTML =
+        '<span class="waiting">chain unreachable — prices unavailable</span>';
+      return;
+    }
+    /* Doubled so the -50% keyframe wraps seamlessly. */
+    const one = TOK.filter((t) => prices.has(t.symbol))
+      .map((t) => tapeItem(t, prices.get(t.symbol))).join("");
+    $("tapein").innerHTML = one + one;
+    $("tape").classList.remove("loading");
+  })();
+
+  /* ---------- the replay ----------
+     A transcript of the real fork run, played back line by line. The numbers
+     are the ones that run actually produced — expected 5.5260 against a
+     simulated 5.5232, the gap being the pool fee — because a demo that
+     invents its own numbers teaches the reader nothing true. */
+  const LINES = [
+    ["k", "reading vault 0x7A2c…9E41"],
+    ["w", "  owner    0x91a1…a185"],
+    ["w", "  agent    0x322F…3b2d"],
+    ["w", "  mandate  Semiconductors, Healthcare, Indices"],
+    ["", ""],
+    ["k", "pricing the mandate from its own pools"],
+    ["w", "  NVDA  $224.39     MU   $1,022.10     TSM  $437.14"],
+    ["w", "  HIMS  $27.46      LLY  $1,124.02     QQQ  $410.88"],
+    ["", ""],
+    ["k", "marking the book"],
+    ["w", "  cash $5,000.00 · positions $0.00 · book $5,000.00"],
+    ["y", "  session Overnight — size x0.25, slippage guard 1.50%"],
+    ["", ""],
+    ["k", "decide() → open NVDA $1,250.00"],
+    ["k", "simulating against the vault"],
+    ["w", "  expected   5.5260 NVDA"],
+    ["w", "  simulated  5.5232 NVDA"],
+    ["g", "  within tolerance — the 0.05% gap is the pool fee"],
+    ["", ""],
+    ["k", "signing"],
+    ["g", "✓ open(NVDA, 1250.00 USDG) mined in block 58,142,802"],
+    ["g", "  allowance left on the router: 0"],
+    ["", ""],
+    ["k", "— and the same runner, with a strategy that names TSLA —"],
+    ["y", "decide() → open TSLA $1,250.00"],
+    ["r", "✗ refused: TSLA is Autos, which is not on this mandate"],
+    ["k", "signing it directly with the agent key instead, bypassing the runner"],
+    ["r", "✗ reverted OffMandate(0x322F0929…, 5)"],
+    ["g", "the vault does not care which code asked."],
+  ];
+
+  const log = $("log");
+  let timer = null;
+  const play = () => {
+    clearTimeout(timer);
+    log.innerHTML = "";
+    let i = 0, ch = 0, cur = null;
+    const step = () => {
+      if (i >= LINES.length) { log.innerHTML += '<span class="cur"></span>'; return; }
+      const [cls, text] = LINES[i];
+      if (!cur) {
+        cur = document.createElement("span");
+        cur.className = cls;
+        log.appendChild(cur);
+      }
+      if (ch < text.length) {
+        /* Whole words at a time. Character-by-character on thirty lines takes
+           long enough that nobody waits for the punchline. */
+        const next = text.indexOf(" ", ch + 1);
+        ch = next === -1 ? text.length : next;
+        cur.textContent = text.slice(0, ch);
+        timer = setTimeout(step, 12);
+      } else {
+        log.appendChild(document.createTextNode("\n"));
+        cur = null; ch = 0; i++;
+        timer = setTimeout(step, text === "" ? 90 : 190);
+      }
+    };
+    step();
+  };
+  $("replay").addEventListener("click", play);
+  /* Only start once it is actually on screen — autoplaying it above the fold
+     means the reader arrives at a finished transcript. */
+  new IntersectionObserver((es, o) => {
+    if (es.some((e) => e.isIntersecting)) { play(); o.disconnect(); }
+  }, { threshold: 0.35 }).observe(log);
+
+  /* ---------- hero floor ---------- */
+  /* A still of the room, drawn small: pods, partitions, screens lit by sector.
+     The real thing is floor.html; this is the same geometry at a glance. */
+  const cv = $("heroFloor");
+  const draw = () => {
+    const r = cv.parentElement.getBoundingClientRect();
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    cv.width = Math.max(640, r.width) * dpr;
+    cv.height = Math.max(320, r.height) * dpr;
+    const g = cv.getContext("2d");
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const W = cv.width / dpr, H = cv.height / dpr;
+
+    g.fillStyle = "#2f363d"; g.fillRect(0, 0, W, H);
+    const POD = 116, GAP = 34, DESK = 52, D2 = 26;
+    let seed = 7;
+    const rnd = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+
+    for (let y = -20; y < H + POD; y += POD + GAP) {
+      for (let x = -30; x < W + POD; x += POD + GAP) {
+        g.fillStyle = "#6f7d8c";
+        g.fillRect(x - 8, y - 8, POD + 16, POD + 16);
+        for (let q = 0; q < 4; q++) {
+          const dx = x + (q % 2) * (DESK + 6), dy = y + ((q / 2) | 0) * (D2 + 8);
+          g.fillStyle = "#d9cdb8"; g.fillRect(dx, dy, DESK, D2);
+          g.fillStyle = "#b8a98f"; g.fillRect(dx, dy + D2 - 2, DESK, 2);
+          const on = rnd() > 0.28;
+          g.fillStyle = on ? colourOf((rnd() * 16) | 0) : "#2b3138";
+          g.fillRect(dx + 5, dy + 5, DESK - 10, 7);
+        }
+        g.fillStyle = "#97907f";
+        g.fillRect(x - 4, y + D2 + 4, POD + 8, 3);
+      }
+    }
+  };
+  draw();
+  addEventListener("resize", draw, { passive: true });
+})();
+</script>
+</body>
+</html>
