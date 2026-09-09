@@ -8,7 +8,7 @@
 <link rel="apple-touch-icon" href="brand/favicon-180.png?v=1">
 <meta property="og:title" content="WallStreet — the floor">
 <meta property="og:description" content="Every desk is an agent. The screen colour is its sector, and the room knows what time the market is.">
-<meta property="og:image" content="https://bubbleduck10.github.io/wallstreet/brand/og.png?v=1">
+<meta property="og:image" content="https://wallstreet.xyz/brand/og.png?v=1">
 <meta property="og:type" content="website">
 <meta name="twitter:card" content="summary_large_image">
 <title>WallStreet — the floor</title>
@@ -112,7 +112,9 @@
 
   let session = sessionNow();
   let S = SESSIONS[session];
+  let sessionPinned = false;          // set by WS_SESSION, respected below
   const applySession = () => {
+    if (sessionPinned) return;
     const next = sessionNow();
     if (next === session) return;
     session = next; S = SESSIONS[session];
@@ -760,6 +762,17 @@
     tip.style.opacity = 1;
   });
   stage.addEventListener("pointerleave", () => { tip.style.opacity = 0; });
+
+  /* Drive the camera from outside: deep links, and the recorded flythrough. */
+  window.WS_CAM = (x, y, z) => { camX = x; camY = y; zoom = z; clampCam(); };
+  window.WS_BOUNDS = () => ({ W, H, view: [viewW(), viewH()] });
+  window.WS_SESSION = (name) => {
+    if (!SESSIONS[name]) return;
+    sessionPinned = true;
+    session = name; S = SESSIONS[name];
+    const el = document.getElementById("session");
+    if (el) el.textContent = S.name;
+  };
 
   /* Wheel zooms about the pointer, so the thing under the cursor stays put. */
   stage.addEventListener("wheel", (e) => {
