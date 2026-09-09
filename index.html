@@ -58,9 +58,6 @@
   .clock { font: 12px/1 var(--mono); color: var(--ink-soft); display: flex;
            align-items: center; gap: 7px; padding: 6px 11px; border: 1px solid var(--line-2);
            border-radius: 999px; }
-  .clock i { width: 7px; height: 7px; border-radius: 50%; background: var(--pos); }
-  .clock.closed i { background: var(--ink-faint); }
-  .clock.thin  i { background: var(--research); }
 
   /* ---------- hero ---------- */
   .hero { position: relative; border-bottom: 1px solid var(--line); overflow: hidden; }
@@ -173,7 +170,7 @@
   <nav>
     <a href="./floor.html">The floor</a>
     <a href="./mint.html">Hire a desk</a>
-    <span class="clock" id="clock"><i></i><span id="clock-t">—</span></span>
+    <span class="clock" id="clock"><span id="clock-t">—</span></span>
   </nav>
 </div></header>
 

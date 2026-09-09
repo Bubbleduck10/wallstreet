@@ -66,9 +66,6 @@
   .topbar .clock { font: 12px/1 var(--mono); color: var(--ink-soft); display: flex;
                    align-items: center; gap: 7px; padding: 6px 11px;
                    border: 1px solid var(--line-2); border-radius: 999px; }
-  .topbar .clock i { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
-  .topbar .clock.closed i { background: var(--ink-faint); }
-  .topbar .clock.thin i { background: var(--warn); }
 </style>
 </head>
 <body>
@@ -77,7 +74,7 @@
   <nav>
     <a href="./floor.html">The floor</a>
     <a href="./mint.html">Hire a desk</a>
-    <span class="clock" id="wsclock"><i></i><span id="wsclock-t">—</span></span>
+    <span class="clock" id="wsclock"><span id="wsclock-t">—</span></span>
   </nav>
 </div></div>
 <div class="wrap">
