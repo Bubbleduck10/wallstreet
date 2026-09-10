@@ -282,6 +282,10 @@
       <span class="pulse" id="pulse"></span>
       <span class="runstate" id="runState">Not running.</span>
     </div>
+    <div class="row" id="gasrow" hidden>
+      <button class="ghost" id="gasBtn" type="button">Send the agent 0.01 ETH for gas</button>
+      <span class="runstate" id="gasnote"></span>
+    </div>
     <p class="note" id="runNote"></p>
 
     <div class="log" id="log" hidden></div>
@@ -769,6 +773,33 @@
     return priv;
   }
 
+  /* Enough for a few trades at the fees this chain charges. Below it the desk
+     can still be started — it is a warning, not a gate — but it will stall on
+     the first trade, so say so before the owner watches it fail. */
+  const MIN_GAS = 1500000000000000n;                    // 0.0015 ETH
+  const TOP_UP = 10000000000000000n;                    // 0.01 ETH
+
+  const agentGas = async () => {
+    const a = addrOf(word(await call(vault, SEL.agent), 0));
+    return { agent: a, wei: big(await rpc("eth_getBalance", [a, "latest"])) };
+  };
+
+  const eth = (wei) => (Number(wei) / 1e18).toFixed(5).replace(/0+$/, "").replace(/\.$/, "");
+
+  /* Sent from the owner's wallet, because the agent cannot fund itself and the
+     vault holds dollars, not gas. */
+  async function sendGas() {
+    if (!window.ethereum) throw new Error("No wallet found in this browser.");
+    const { agent } = await agentGas();
+    const [from] = await window.ethereum.request({ method: "eth_requestAccounts" });
+    if (!from || from.toLowerCase() !== (owner || "").toLowerCase())
+      throw new Error("Connect the wallet that owns this desk to send it gas.");
+    return window.ethereum.request({
+      method: "eth_sendTransaction",
+      params: [{ from, to: agent, value: "0x" + TOP_UP.toString(16) }],
+    });
+  }
+
   /* One place to say what went wrong, because the run button and the cycle can
      both hit the same wall. */
   const keyProblem = (e) => {
@@ -847,6 +878,21 @@
         btn.disabled = false;
         return;
       }
+      try {
+        const g = await agentGas();
+        if (g.wei < MIN_GAS) {
+          runState("Not running.");
+          runNote("The agent holds " + eth(g.wei) + " ETH and cannot pay for a trade. It signs its " +
+                  "own transactions, so it needs a little gas of its own — send it some below, " +
+                  "then start again.", "err");
+          $("gasrow").hidden = false;
+          $("gasnote").textContent = "Agent " + g.agent + " · holds " + eth(g.wei) + " ETH.";
+          btn.disabled = false;
+          return;
+        }
+        $("gasrow").hidden = true;
+      } catch { /* a balance we cannot read is not a reason to refuse to start */ }
+
       btn.disabled = false;
       running = true;
       btn.textContent = "Stop";
@@ -862,6 +908,18 @@
       runState("Stopped.");
       runNote("");
     }
+  });
+
+  $("gasBtn").addEventListener("click", async () => {
+    const b = $("gasBtn");
+    b.disabled = true;
+    try {
+      await sendGas();
+      $("gasnote").textContent = "Sent. Give it a moment, then press Start trading.";
+      runNote("");
+    } catch (e) {
+      $("gasnote").textContent = (e && (e.message || String(e))) || "Could not send.";
+    } finally { b.disabled = false; }
   });
 
   /* ---- the conversation ---- */
