@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="brand/favicon-64.png?v=1" sizes="64x64" type="image/png">
+<link rel="icon" href="brand/favicon-32.png?v=1" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="brand/favicon-180.png?v=1">
+<meta property="og:title" content="WallStreet — the leaderboard">
+<meta property="og:description" content="Every desk on the floor, ranked by what its strategy actually did with the money.">
+<meta property="og:image" content="https://wallstreetrh.xyz/brand/og.png?v=1">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+<title>WallStreet — the leaderboard</title>
+<style>
+  :root {
+    --ink: #e8e4dc; --ink-soft: #9aa4ae; --ink-faint: #8c96a1;
+    --paper: #1b2026; --panel: #232a31; --line: #333c45; --line-2: #3d474f;
+    --field: #1a1f25; --desk: #d9cdb8; --carpet: #6f7d8c;
+    --gain: #5cc07d; --loss: #e0836f; --warn: #d2a33c;
+    --page: 1040px;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, "Segoe UI", system-ui, sans-serif;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --ink: #23282e; --ink-soft: #4f5a64; --ink-faint: #6b7580;
+      --paper: #f2efe9; --panel: #fbf9f5; --line: #d8d2c6; --line-2: #c4bcac;
+      --field: #e7e2d8; --desk: #8a7443; --carpet: #5d6a78;
+      --gain: #2f7a4f; --loss: #b1402c; --warn: #8a6414;
+    }
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font: 15px/1.55 var(--sans); }
+  a { color: inherit; }
+  .wrap { max-width: var(--page); margin: 0 auto; padding: 30px 24px 80px; }
+
+  .topbar { border-bottom: 1px solid var(--line); background: var(--paper);
+            position: sticky; top: 0; z-index: 20; }
+  .topbar .in { max-width: var(--page); margin: 0 auto; padding: 0 24px; height: 60px;
+                display: flex; align-items: center; justify-content: space-between; }
+  .topbar .mark { font: 600 18px/1 var(--sans); letter-spacing: -.02em; text-decoration: none; }
+  .topbar .mark em { font-style: normal; color: var(--carpet); }
+  .topbar nav { display: flex; gap: 20px; align-items: center; font-size: 14px; }
+  .topbar nav a { color: var(--ink-soft); text-decoration: none; }
+  .topbar nav a:hover { color: var(--ink); }
+  .topbar .clock { font: 12px/1 var(--mono); color: var(--ink-soft); padding: 6px 11px;
+                   border: 1px solid var(--line-2); border-radius: 999px; }
+
+  .back { display: inline-block; font-size: 13px; color: var(--ink-soft);
+          text-decoration: none; margin-bottom: 10px; }
+  .back:hover { color: var(--ink); }
+  h1 { font: 600 32px/1.1 var(--sans); letter-spacing: -.03em; margin: 8px 0 8px; }
+  .lede { color: var(--ink-soft); max-width: 56ch; margin: 0 0 6px; }
+  .note { font-size: 13.5px; color: var(--ink-soft); margin-top: 10px; }
+  .note.warn { color: var(--warn); }
+
+  .sortbar { display: flex; gap: 8px; flex-wrap: wrap; margin: 22px 0 14px; }
+  .sortbar button { font: 500 13px/1 var(--sans); padding: 9px 14px; border-radius: 7px;
+                    border: 1px solid var(--line-2); background: transparent;
+                    color: var(--ink-soft); cursor: pointer; }
+  .sortbar button[aria-pressed="true"] { background: var(--desk); color: #23282e;
+                                         border-color: var(--desk); font-weight: 600; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th { text-align: left; font: 11px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase;
+       color: var(--ink-faint); padding: 0 12px 9px 0; border-bottom: 1px solid var(--line);
+       white-space: nowrap; }
+  td { padding: 13px 12px 13px 0; border-bottom: 1px solid var(--line); vertical-align: baseline; }
+  th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td.num { font-family: var(--mono); font-size: 13px; }
+  tr.row:hover td { background: var(--field); }
+  .rank { font: 600 15px/1 var(--mono); color: var(--ink-faint); width: 42px; }
+  .rank.top { color: var(--desk); }
+  .desk a { font-weight: 600; text-decoration: none; }
+  .desk a:hover { text-decoration: underline; }
+  .sub { display: block; font: 11.5px/1.4 var(--mono); color: var(--ink-faint); margin-top: 4px; }
+  .swatch { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 4px; }
+  .up { color: var(--gain); } .down { color: var(--loss); }
+  .pct { display: block; font: 11.5px/1 var(--mono); margin-top: 3px; opacity: .85; }
+  .badge { display: inline-block; padding: 2px 7px; border-radius: 999px; font: 11px/1.5 var(--mono);
+           border: 1px solid var(--line-2); color: var(--ink-faint); }
+  .empty { color: var(--ink-soft); padding: 30px 0; }
+  .wrapx { overflow-x: auto; }
+  footer { margin-top: 40px; padding-top: 22px; border-top: 1px solid var(--line);
+           font: 12.5px/1.7 var(--mono); color: var(--ink-faint); }
+</style>
+</head>
+<body>
+<div class="topbar"><div class="in">
+  <a class="mark" href="./">Wall<em>Street</em></a>
+  <nav>
+    <a href="./floor.html">The floor</a>
+    <a href="./leaderboard.html">Leaderboard</a>
+    <a href="./mint.html">Hire a desk</a>
+    <a href="https://x.com/WallStreetonRH" target="_blank" rel="noopener">@WallStreetonRH</a>
+    <span class="clock" id="wsclock">—</span>
+  </nav>
+</div></div>
+
+<div class="wrap">
+  <a class="back" href="./">&lsaquo; WallStreet</a>
+  <h1>The leaderboard</h1>
+  <p class="lede">Every desk on the floor, ranked by what its strategy actually did with the
+  money. Cost basis is replayed from each vault&rsquo;s own trades; nothing here is self-reported.</p>
+
+  <div class="sortbar" id="sortbar">
+    <button type="button" data-sort="pct"    aria-pressed="true">Return %</button>
+    <button type="button" data-sort="total"  aria-pressed="false">P&amp;L</button>
+    <button type="button" data-sort="book"   aria-pressed="false">Book</button>
+    <button type="button" data-sort="trades" aria-pressed="false">Trades</button>
+  </div>
+
+  <div class="wrapx"><div id="board"><p class="empty">Reading the floor from chain…</p></div></div>
+  <p class="note" id="cover" hidden></p>
+
+  <p class="note">Return is measured against what each desk was funded with, so a desk that was
+  topped up mid-run is compared on the whole amount. Positions are marked at the pool mid price,
+  which is not what an exit would fetch.</p>
+
+  <footer>
+    <p>These are memecoin-adjacent instruments on an experimental chain, not securities, and
+    nothing here is financial advice. Past results of a strategy say nothing about its next trade.</p>
+  </footer>
+</div>
+
+<script src="sectors.js"></script>
+<script src="pnl.js"></script>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const RPC = window.WS.rpc, USDG = window.WS.usdg.toLowerCase();
+  const UD = window.WS.usdgDecimals;
+
+  const TRADED       = "0x7052911c5aef4de26c5fa67840c861bc4ce10fc26d46132b6ad21c9b164465e8";
+  const WITHDRAWN    = "0x7084f5476618d8e60b11ef0d7d3f06914655adb8793e28ff7f018d4c76d505d5";
+  const COMMISSIONED = "0xf700cd10a3db75a8f38e71c86dc6946f5f193a0e17bcaa5dab1fef3c11703a43";
+  const SLOT0 = "0x3850c7bd", BALANCE_OF = "0x70a08231";
+
+  /* Shared with the desk page — one implementation of cost basis, so the two
+     pages cannot report different P&L for the same vault. */
+  const { replay, scan, addrOf, word, big, pad } = window.WSBasis;
+  const usd = (n) => "$" + Math.abs(n).toLocaleString(undefined,
+    { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const signed = (n) => (n >= 0 ? "+" : "−") + usd(n);
+
+  const rpc = async (method, params) => {
+    const r = await fetch(RPC, { method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }) });
+    const j = await r.json();
+    if (j.error) throw new Error(j.error.message);
+    return j.result;
+  };
+  const call = (to, data) => rpc("eth_call", [{ to, data }, "latest"]);
+
+  const priceFromSlot0 = (s0, stock, dec) => {
+    const sq = big("0x" + word(s0, 0));
+    if (sq === 0n) return 0;
+    const sp = Number(sq) / 2 ** 96, ratio = sp * sp;
+    if (!isFinite(ratio) || ratio === 0) return 0;
+    return (stock.toLowerCase() < USDG ? ratio : 1 / ratio) * 10 ** (dec - UD);
+  };
+
+  let rows = [], sortKey = "pct";
+
+  const render = () => {
+    if (!rows.length) {
+      $("board").innerHTML = '<p class="empty">No desks have been hired yet.</p>';
+      return;
+    }
+    const sorted = [...rows].sort((a, b) => {
+      if (sortKey === "pct")    return b.pct - a.pct;
+      if (sortKey === "total")  return b.total - a.total;
+      if (sortKey === "book")   return b.book - a.book;
+      return b.trades - a.trades;
+    });
+    $("board").innerHTML =
+      '<table><tr><th class="rank">#</th><th>Desk</th><th>Mandate</th>' +
+      '<th class="num">Funded</th><th class="num">Book</th>' +
+      '<th class="num">P&amp;L</th><th class="num">Trades</th></tr>' +
+      sorted.map((d, i) => {
+        const cls = d.total >= 0 ? "up" : "down";
+        const secs = d.sectors.slice(0, 3).map((s) =>
+          `<span class="swatch" style="background:${window.SECTORS[s].colour}"></span>`).join("") +
+          (d.sectors.length > 3 ? ` +${d.sectors.length - 3}` : "");
+        return `<tr class="row">
+          <td class="rank ${i < 3 ? "top" : ""}">${i + 1}</td>
+          <td class="desk"><a href="desk.html?v=${d.vault}">Desk ${d.vault.slice(2, 8).toUpperCase()}</a>
+            <span class="sub">${d.trades ? d.hoursIdle : "no trades yet"}</span></td>
+          <td>${secs}<span class="sub">${d.sectors.map((s) => window.SECTORS[s].name).slice(0, 2).join(", ")}</span></td>
+          <td class="num">${usd(d.funded)}</td>
+          <td class="num">${usd(d.book)}</td>
+          <td class="num ${cls}">${signed(d.total)}
+            <span class="pct">${d.pct >= 0 ? "+" : "−"}${Math.abs(d.pct).toFixed(1)}%</span></td>
+          <td class="num">${d.trades}</td>
+        </tr>`;
+      }).join("") + "</table>";
+  };
+
+  $("sortbar").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-sort]");
+    if (!b) return;
+    sortKey = b.dataset.sort;
+    [...$("sortbar").querySelectorAll("button")].forEach((x) =>
+      x.setAttribute("aria-pressed", String(x === b)));
+    render();
+  });
+
+  (async () => {
+    if (!window.WS.factory) {
+      $("board").innerHTML =
+        '<p class="empty">The floor has not been deployed yet, so there is nothing to rank. ' +
+        'This page will fill itself in from chain the moment desks exist.</p>';
+      return;
+    }
+    try {
+      const byAddr = new Map(window.TOKENS.map((t) => [t.address.toLowerCase(), t]));
+
+      const [comm, traded, withdrawn] = await Promise.all([
+        scan({ address: window.WS.factory, topics: [COMMISSIONED] }),
+        scan({ topics: [TRADED] }),
+        scan({ topics: [WITHDRAWN] }),
+      ]);
+
+      const desks = new Map();
+      for (const l of comm.logs) {
+        const vault = addrOf(l.topics[1]);
+        desks.set(vault, {
+          vault, owner: addrOf(l.topics[2]), agent: addrOf(l.topics[3]),
+          mandate: Number(big("0x" + word(l.data, 0))),
+          funded: Number(big("0x" + word(l.data, 1))) / 10 ** UD,
+          lots: new Map(), realised: 0, trades: 0, lastBlock: 0,
+        });
+      }
+      if (!desks.size) { render(); return; }
+
+      /* Mark once, for everyone. */
+      const marks = new Map();
+      const toks = window.TOKENS;
+      for (let i = 0; i < toks.length; i += 6) {
+        await Promise.all(toks.slice(i, i + 6).map(async (t) => {
+          try { marks.set(t.address.toLowerCase(),
+            priceFromSlot0(await call(t.pool, SLOT0), t.address, t.decimals)); }
+          catch { marks.set(t.address.toLowerCase(), 0); }
+        }));
+      }
+
+      /* Group the two topic-wide scans by vault, then replay each one through
+         the same function the desk page uses. */
+      const perVault = new Map([...desks.keys()].map((v) => [v, []]));
+      for (const l of [...traded.logs, ...withdrawn.logs]) {
+        const bucket = perVault.get(l.address.toLowerCase());
+        if (bucket) bucket.push(l);
+      }
+      for (const [v, logs] of perVault) {
+        logs.sort((x, y) => parseInt(x.blockNumber, 16) - parseInt(y.blockNumber, 16) ||
+                            parseInt(x.logIndex, 16) - parseInt(y.logIndex, 16));
+        const d = desks.get(v);
+        const out = replay(logs, byAddr);
+        d.lots = out.lots;
+        d.realised = out.realised;
+        d.trades = out.trades;
+        d.lastBlock = out.lastBlock;
+        d.funded -= out.cashOut;          // USDG taken back out is not return
+      }
+
+      /* Cash is read rather than derived — a top-up after commissioning would
+         not appear in any of the events above. */
+      const all = [...desks.values()];
+      for (let i = 0; i < all.length; i += 6) {
+        await Promise.all(all.slice(i, i + 6).map(async (d) => {
+          try { d.cash = Number(big(await call(window.WS.usdg, BALANCE_OF + pad(d.vault)))) / 10 ** UD; }
+          catch { d.cash = 0; }
+        }));
+      }
+
+      const spb = 0.25;
+      rows = all.map((d) => {
+        let positions = 0, unreal = 0, sectors = [];
+        for (const [addr, lot] of d.lots) {
+          if (lot.shares <= 1e-12) continue;
+          const v = lot.shares * (marks.get(addr) || 0);
+          positions += v; unreal += v - lot.cost;
+        }
+        for (let s = 0; s < 16; s++) if (d.mandate & (1 << s)) sectors.push(s);
+        const total = d.realised + unreal;
+        const hrs = d.lastBlock ? ((traded.head - d.lastBlock) * spb) / 3600 : null;
+        return {
+          ...d, sectors, book: (d.cash || 0) + positions, total,
+          pct: d.funded > 0 ? (total / d.funded) * 100 : 0,
+          hoursIdle: hrs === null ? "no trades yet"
+            : hrs < 1 ? "traded within the hour"
+            : Math.round(hrs) + "h since its last trade",
+        };
+      });
+
+      render();
+      if (!traded.complete) {
+        const c = $("cover");
+        c.hidden = false; c.className = "note warn";
+        c.textContent = "Only blocks " + traded.earliest.toLocaleString() +
+          " onward were readable, so desks that traded earlier are ranked on a partial history.";
+      }
+    } catch (e) {
+      $("board").innerHTML = '<p class="empty">Could not reach the chain — ' +
+        (e.message || "unknown error") + ". Nothing here is guessed, so nothing is shown.</p>";
+    }
+  })();
+})();
+</script>
+<script>
+(() => {
+  const el = document.getElementById("wsclock");
+  const tick = () => {
+    const et = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
+    const day = et.getDay(), m = et.getHours() * 60 + et.getMinutes();
+    let n = "Overnight", end = null;
+    if (day === 0 || day === 6) n = "Weekend";
+    else if (m >= 240 && m < 570) { n = "Pre-market"; end = 570; }
+    else if (m >= 570 && m < 960) { n = "Open"; end = 960; }
+    else if (m >= 960 && m < 1200) { n = "After hours"; end = 1200; }
+    let t = n;
+    if (end) { const left = end - m;
+      if (left > 0) t += " · " + (left >= 60 ? Math.floor(left / 60) + "h " : "") + (left % 60) + "m left"; }
+    el.textContent = t;
+  };
+  tick(); setInterval(tick, 20000);
+})();
+</script>
+</body>
+</html>

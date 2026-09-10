@@ -70,6 +70,68 @@
   };
 
   /**
+   * Replay one vault's logs into lots. Pure — no network, no DOM — so both the
+   * desk page and the leaderboard can share it and cannot drift apart.
+   *
+   * @param {Array} logs      Traded and Withdrawn logs for a single vault
+   * @param {Map} byAddr      lowercase token address -> {decimals}
+   * @returns {{lots:Map, realised:number, cashOut:number, trades:number, lastBlock:number}}
+   */
+  const replay = (logs, byAddr) => {
+    const lots = new Map();
+    const lotOf = (a) => {
+      if (!lots.has(a)) lots.set(a, { shares: 0, cost: 0, realised: 0 });
+      return lots.get(a);
+    };
+    let realised = 0, cashOut = 0, trades = 0, lastBlock = 0;
+
+    for (const l of logs) {
+      const t0 = (l.topics[0] || "").toLowerCase();
+
+      if (t0 === TRADED) {
+        trades += 1;
+        lastBlock = Math.max(lastBlock, parseInt(l.blockNumber, 16) || 0);
+        const tIn = addrOf(l.topics[1]), tOut = addrOf(l.topics[2]);
+        const aIn = big("0x" + word(l.data, 0)), aOut = big("0x" + word(l.data, 1));
+
+        if (tIn === USDG) {                                   // a buy
+          const tok = byAddr.get(tOut); if (!tok) continue;
+          const lot = lotOf(tOut);
+          lot.cost += Number(aIn) / 10 ** USDG_DEC;
+          lot.shares += Number(aOut) / 10 ** tok.decimals;
+        } else if (tOut === USDG) {                           // a sell
+          const tok = byAddr.get(tIn); if (!tok) continue;
+          const lot = lotOf(tIn);
+          const sold = Number(aIn) / 10 ** tok.decimals;
+          const proceeds = Number(aOut) / 10 ** USDG_DEC;
+          const avg = lot.shares > 0 ? lot.cost / lot.shares : 0;
+          const basis = avg * Math.min(sold, lot.shares);
+          lot.realised += proceeds - basis;
+          realised += proceeds - basis;
+          lot.shares = Math.max(0, lot.shares - sold);
+          lot.cost = Math.max(0, lot.cost - basis);
+        }
+      }
+
+      if (t0 === WITHDRAWN) {
+        const token = addrOf(l.topics[1]);
+        const amt = big("0x" + word(l.data, 0));
+        if (token === USDG) { cashOut += Number(amt) / 10 ** USDG_DEC; continue; }
+        const tok = byAddr.get(token); if (!tok) continue;
+        /* Shares left at no price: reduce the position and its basis together
+           so the average is unchanged. A distribution, not a disposal. */
+        const out = Number(amt) / 10 ** tok.decimals;
+        const lot = lotOf(token);
+        const frac = lot.shares > 0 ? Math.min(1, out / lot.shares) : 0;
+        lot.cost = Math.max(0, lot.cost - lot.cost * frac);
+        lot.shares = Math.max(0, lot.shares - out);
+      }
+    }
+    return { lots, realised, cashOut, trades, lastBlock };
+  };
+  window.WSBasis = { replay, scan: collect, addrOf, word, big, pad };
+
+  /**
    * @param {string} vault
    * @param {Map<string,number>} marks  lowercase token address -> USD price
    * @returns {Promise<object>} lots, realised, unrealised, funding, coverage
@@ -83,63 +145,7 @@
       collect({ address: window.WS.usdg, topics: [TRANSFER, null, "0x" + pad(vault)] }),
     ]);
 
-    /* One lot per stock: shares held, and what those shares cost. */
-    const lots = new Map();
-    const lotOf = (addr) => {
-      if (!lots.has(addr)) lots.set(addr, { shares: 0, cost: 0, realised: 0, buys: 0, sells: 0 });
-      return lots.get(addr);
-    };
-
-    let realised = 0, feesSeen = 0;
-
-    for (const l of vaultLogs.logs) {
-      const t0 = (l.topics[0] || "").toLowerCase();
-
-      if (t0 === TRADED) {
-        const tokenIn  = addrOf(l.topics[1]);
-        const tokenOut = addrOf(l.topics[2]);
-        const amountIn  = big("0x" + word(l.data, 0));
-        const amountOut = big("0x" + word(l.data, 1));
-
-        if (tokenIn === USDG) {                              // a buy
-          const tok = byAddr.get(tokenOut);
-          if (!tok) continue;
-          const spent  = Number(amountIn) / 10 ** USDG_DEC;
-          const shares = Number(amountOut) / 10 ** tok.decimals;
-          const lot = lotOf(tokenOut);
-          lot.shares += shares; lot.cost += spent; lot.buys += 1;
-        } else if (tokenOut === USDG) {                      // a sell
-          const tok = byAddr.get(tokenIn);
-          if (!tok) continue;
-          const sold     = Number(amountIn) / 10 ** tok.decimals;
-          const proceeds = Number(amountOut) / 10 ** USDG_DEC;
-          const lot = lotOf(tokenIn);
-          const avg = lot.shares > 0 ? lot.cost / lot.shares : 0;
-          const basis = avg * Math.min(sold, lot.shares);
-          lot.realised += proceeds - basis;
-          realised     += proceeds - basis;
-          lot.shares = Math.max(0, lot.shares - sold);
-          lot.cost   = Math.max(0, lot.cost - basis);
-          lot.sells += 1;
-        }
-      }
-
-      if (t0 === WITHDRAWN) {
-        const token = addrOf(l.topics[1]);
-        const amount = big("0x" + word(l.data, 0));
-        if (token === USDG) { feesSeen += Number(amount) / 10 ** USDG_DEC; continue; }
-        const tok = byAddr.get(token);
-        if (!tok) continue;
-        /* Shares left the vault at no price. Reduce the position and its basis
-           together so the remaining average cost is unchanged — this is a
-           distribution, not a disposal, and books no gain or loss. */
-        const out = Number(amount) / 10 ** tok.decimals;
-        const lot = lotOf(token);
-        const frac = lot.shares > 0 ? Math.min(1, out / lot.shares) : 0;
-        lot.cost   = Math.max(0, lot.cost - lot.cost * frac);
-        lot.shares = Math.max(0, lot.shares - out);
-      }
-    }
+    const { lots, realised, cashOut: feesSeen, trades } = replay(vaultLogs.logs, byAddr);
 
     /* Mark the open lots. */
     const rows = [];
@@ -171,7 +177,7 @@
       rows, realised, unrealised, total: realised + unrealised,
       valueNow, basisNow,
       fundedIn, cashOut: feesSeen, netFunded: fundedIn - feesSeen,
-      trades: vaultLogs.logs.filter((l) => (l.topics[0] || "").toLowerCase() === TRADED).length,
+      trades,
       coverage: {
         complete: vaultLogs.complete,
         fromBlock: vaultLogs.earliest,
