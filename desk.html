@@ -852,6 +852,22 @@
   const stopHeart = () => { clearInterval(heart); heart = null; dropClaim(); };
   window.addEventListener("pagehide", () => { if (running) dropClaim(); });
 
+  /* Closing the tab stops the desk, because the key that signs its trades is
+     in this browser and nowhere else. Warn before that happens — a desk that
+     went quiet at midnight because a window was closed is the kind of thing
+     somebody finds out about in the morning.
+
+     The wording is the browser's own: a page cannot write this dialog, and
+     every attempt to fake one with a custom overlay can be dismissed without
+     the page ever knowing. So the warning is generic, and the honest place to
+     explain what it means is next to the button that starts the desk. */
+  window.addEventListener("beforeunload", (e) => {
+    if (!running) return;
+    e.preventDefault();
+    e.returnValue = "";                 // required by older browsers to prompt
+    return "";
+  });
+
   /* Prices are sampled faster than the desk trades, so a trend exists before
      the agent is next due to look. Without this the first four readings take
      four pace intervals — forty minutes on the default — and the desk looks
@@ -990,7 +1006,8 @@
     $("runBtn").textContent = "Stop";
     $("pulse").className = "pulse on";
     runNote("Trading while this tab is open, and it picks up where it left off if you reload. " +
-            "Close the tab and it stops — nothing runs on a server, and nobody else holds your key.");
+            "Closing the tab stops it — your browser will ask you to confirm first. Nothing runs " +
+            "on a server, because the key that signs these trades is here and nowhere else.");
     startSampling();
     cycle();
   }
