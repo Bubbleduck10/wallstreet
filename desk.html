@@ -296,8 +296,9 @@
 
   <div class="panel">
     <h2>Running it</h2>
-    <p class="note">The agent key was generated when this desk was hired and is held by whoever
-    hired it. Point the runner at this vault with that key:</p>
+    <p class="note">The agent signs its own trades with a key derived from the owner's signature —
+    starting the desk above asks for it. You only need this if you want to run the agent somewhere
+    other than a browser tab:</p>
     <div class="row">
       <button class="ghost" id="recover" type="button">Recover the agent key</button>
     </div>
@@ -548,11 +549,13 @@
         return;
       }
       recovered = priv;
+      try { localStorage.setItem("ws.agent." + owner.toLowerCase(), priv); } catch {}
       $("kagent").textContent = addr;
       $("kkey").textContent = priv;
       $("kbox").hidden = false;
       $("kacts").hidden = false;
-      kn("Matches this desk's agent on chain. Nothing was stored to get this — sign again any time.");
+      kn("Matches this desk's agent on chain. The browser agent can use it now — and it comes " +
+         "from your signature, so signing again returns it on any machine.");
     } catch (e) {
       kn((e && (e.message || String(e))) || "Could not recover.", "err");
     } finally { btn.disabled = false; }
@@ -691,17 +694,53 @@
   const runState = (m) => { $("runState").textContent = m; };
   const runNote = (m, cls) => { const e = $("runNote"); e.textContent = m || ""; e.className = "note " + (cls || ""); };
 
-  /* The key: already in this browser from the mint, or recovered by signing. */
-  async function agentKey() {
+  /* The key: already in this browser, or signed for on the spot. Deriving it
+     is the same operation the mint performed — the same signature always gives
+     the same key — so there is nothing the owner can have lost. It is checked
+     against the vault before use and stored afterwards only so the agent does
+     not ask again every time the tab is reopened. */
+  const KEYSTORE = () => "ws.agent." + owner.toLowerCase();
+
+  async function agentKey(onSigning) {
     if (!owner) throw new Error("Still reading this desk.");
-    const stored = (() => { try { return localStorage.getItem("ws.agent." + owner.toLowerCase()); } catch { return null; } })();
-    if (stored) {
-      const { addressOf } = await import("./vendor/keygen.js");
-      const onchain = addrOf(word(await call(vault, SEL.agent), 0));
-      if (addressOf(stored).toLowerCase() === onchain.toLowerCase()) return stored;
-    }
-    throw new Error("no-key");
+    const { addressOf } = await import("./vendor/keygen.js");
+    const onchain = addrOf(word(await call(vault, SEL.agent), 0));
+    const matches = (k) => {
+      try { return addressOf(k).toLowerCase() === onchain.toLowerCase(); } catch { return false; }
+    };
+
+    const stored = (() => { try { return localStorage.getItem(KEYSTORE()); } catch { return null; } })();
+    if (stored && matches(stored)) return stored;
+
+    if (!window.ethereum) throw new Error("no-wallet");
+    const [from] = await window.ethereum.request({ method: "eth_requestAccounts" });
+    if (!from) throw new Error("no-wallet");
+    if (from.toLowerCase() !== owner.toLowerCase()) throw new Error("not-owner");
+
+    if (onSigning) onSigning();
+    const sig = await window.ethereum.request({
+      method: "personal_sign", params: [AGENT_MESSAGE(from), from],
+    });
+    const priv = await deriveKey(sig);
+    if (!matches(priv)) throw new Error("key-mismatch");
+    try { localStorage.setItem(KEYSTORE(), priv); } catch {}
+    return priv;
   }
+
+  /* One place to say what went wrong, because the run button and the cycle can
+     both hit the same wall. */
+  const keyProblem = (e) => {
+    const m = e && e.message;
+    if (m === "no-wallet")
+      return "No wallet is connected in this browser. Connect the wallet that hired this desk, then start again.";
+    if (m === "not-owner")
+      return "That is not this desk's owner. Switch to " + (owner || "").slice(0, 10) +
+             "… — its key comes from that wallet's signature.";
+    if (m === "key-mismatch")
+      return "That signature does not derive this desk's agent. Your wallet may be signing " +
+             "non-deterministically, or the desk was hired from another wallet.";
+    return null;
+  };
 
   const schedule = (ms) => {
     clearTimeout(timer);
@@ -724,12 +763,13 @@
       paintLog();
       await load();
     } catch (e) {
-      if (e.message === "no-key") {
+      const problem = keyProblem(e);
+      if (problem) {
         running = false;
         $("pulse").className = "pulse";
         $("runBtn").textContent = "Start trading";
-        runNote("This browser does not have the agent key. Recover it below — sign the same " +
-                "message you signed when you hired the desk — then start again.", "err");
+        runState("Stopped.");
+        runNote(problem, "err");
         busy = false;
         return;
       }
@@ -750,14 +790,28 @@
   }, 1000);
 
   $("runBtn").addEventListener("click", async () => {
-    running = !running;
-    if (running) {
-      $("runBtn").textContent = "Stop";
+    if (!running) {
+      const btn = $("runBtn");
+      btn.disabled = true;
+      runState("Unlocking…");
+      try {
+        await agentKey(() => runNote("Approve the signature in your wallet. It creates this desk's " +
+                                     "trading key — it is not a transaction and costs nothing."));
+      } catch (e) {
+        runState("Not running.");
+        runNote(keyProblem(e) || (e && e.message) || "Could not unlock the desk.", "err");
+        btn.disabled = false;
+        return;
+      }
+      btn.disabled = false;
+      running = true;
+      btn.textContent = "Stop";
       $("pulse").className = "pulse on";
       runNote("Trading while this tab is open. Close it and the agent stops — nothing keeps " +
               "running on a server, and nobody else holds your key.");
       cycle();
     } else {
+      running = false;
       clearTimeout(timer);
       $("runBtn").textContent = "Start trading";
       $("pulse").className = "pulse";
