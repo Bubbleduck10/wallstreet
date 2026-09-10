@@ -159,9 +159,9 @@
   }
 
   /* How often prices are read, as distinct from how often the desk trades.
-     Four readings a minute apart is an opinion in four minutes; four readings
-     a pace apart is an opinion in forty. */
-  const SAMPLE_MS = 60e3;
+     Four readings thirty seconds apart is an opinion in two minutes; four
+     readings a pace apart is an opinion in forty. */
+  const SAMPLE_MS = 30e3;
 
   /** Read the desk and fold the prices into its history. No decision, no key. */
   async function sample(vault) {
@@ -192,7 +192,8 @@
     const old = s.find((p) => now - p[0] <= windowMs) || s[0];
     const last = s[s.length - 1];
     if (!old || !old[1]) return { move: 0, samples: s.length, ready: false };
-    return { move: (last[1] - old[1]) / old[1], samples: s.length, ready: true };
+    return { move: (last[1] - old[1]) / old[1], samples: s.length, ready: true,
+             spanMin: Math.max(0, (last[0] - old[0]) / 60000) };
   }
 
   /**
@@ -296,6 +297,7 @@
       return {
         symbol: t.symbol, price: t.price, sectorName: window.SECTORS[t.sector].name,
         depthUsd: t.depthUsd, move: tr.move, samples: tr.samples, trendReady: tr.ready,
+        spanMin: tr.spanMin,
         held: t.qty,
       };
     }),

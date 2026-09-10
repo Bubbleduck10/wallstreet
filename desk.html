@@ -924,9 +924,9 @@
     if (!running || busy) return;
     const r = A.readiness(vault, hist);
     if (!r.enough) {
-      const left = Math.max(1, Math.ceil(((r.need - (r.most || 0)) * A.SAMPLE_MS) / 60000));
+      const secs = Math.max(5, Math.round(((r.need - (r.most || 0)) * A.SAMPLE_MS) / 1000));
       runState("Building price history — " + (r.most || 0) + " of " + r.need +
-               " readings. Can judge in about " + left + " min.");
+               " readings. Can judge in about " + (secs > 90 ? Math.ceil(secs / 60) + " min" : secs + "s") + ".");
       return;
     }
     const left = Math.max(0, Math.round((nextAt - Date.now()) / 1000));
