@@ -84,6 +84,7 @@
       return lots.get(a);
     };
     let realised = 0, cashOut = 0, trades = 0, lastBlock = 0;
+    const history = [];
 
     for (const l of logs) {
       const t0 = (l.topics[0] || "").toLowerCase();
@@ -97,8 +98,15 @@
         if (tIn === USDG) {                                   // a buy
           const tok = byAddr.get(tOut); if (!tok) continue;
           const lot = lotOf(tOut);
-          lot.cost += Number(aIn) / 10 ** USDG_DEC;
-          lot.shares += Number(aOut) / 10 ** tok.decimals;
+          const usd = Number(aIn) / 10 ** USDG_DEC;
+          const qty = Number(aOut) / 10 ** tok.decimals;
+          lot.cost += usd;
+          lot.shares += qty;
+          history.push({
+            kind: "buy", symbol: tok.symbol, address: tOut, qty, usd,
+            price: qty > 0 ? usd / qty : 0, realised: null,
+            block: parseInt(l.blockNumber, 16) || 0, hash: l.transactionHash,
+          });
         } else if (tOut === USDG) {                           // a sell
           const tok = byAddr.get(tIn); if (!tok) continue;
           const lot = lotOf(tIn);
@@ -110,6 +118,12 @@
           realised += proceeds - basis;
           lot.shares = Math.max(0, lot.shares - sold);
           lot.cost = Math.max(0, lot.cost - basis);
+          history.push({
+            kind: "sell", symbol: tok.symbol, address: tIn, qty: sold, usd: proceeds,
+            price: sold > 0 ? proceeds / sold : 0,
+            realised: proceeds - basis,
+            basis, block: parseInt(l.blockNumber, 16) || 0, hash: l.transactionHash,
+          });
         }
       }
 
@@ -125,9 +139,15 @@
         const frac = lot.shares > 0 ? Math.min(1, out / lot.shares) : 0;
         lot.cost = Math.max(0, lot.cost - lot.cost * frac);
         lot.shares = Math.max(0, lot.shares - out);
+        history.push({
+          kind: "withdrawn", symbol: tok.symbol, address: token, qty: out,
+          usd: null, price: null, realised: null,
+          block: parseInt(l.blockNumber, 16) || 0, hash: l.transactionHash,
+        });
       }
     }
-    return { lots, realised, cashOut, trades, lastBlock };
+    history.sort((a, b) => b.block - a.block);
+    return { lots, realised, cashOut, trades, lastBlock, history };
   };
   window.WSBasis = { replay, scan: collect, addrOf, word, big, pad };
 
@@ -145,7 +165,7 @@
       collect({ address: window.WS.usdg, topics: [TRANSFER, null, "0x" + pad(vault)] }),
     ]);
 
-    const { lots, realised, cashOut: feesSeen, trades } = replay(vaultLogs.logs, byAddr);
+    const { lots, realised, cashOut: feesSeen, trades, history } = replay(vaultLogs.logs, byAddr);
 
     /* Mark the open lots. */
     const rows = [];
@@ -174,7 +194,7 @@
     }
 
     return {
-      rows, realised, unrealised, total: realised + unrealised,
+      rows, history, head: vaultLogs.head, realised, unrealised, total: realised + unrealised,
       valueNow, basisNow,
       fundedIn, cashOut: feesSeen, netFunded: fundedIn - feesSeen,
       trades,

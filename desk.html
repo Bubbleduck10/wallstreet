@@ -59,6 +59,24 @@
   .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 14px; }
   .status { font-size: 13.5px; color: var(--ink-soft); margin-top: 12px; min-height: 20px; }
   .status.err { color: var(--bad); } .status.ok { color: var(--accent); font-weight: 600; }
+  .trades .t { display: flex; gap: 14px; padding: 13px 0; border-bottom: 1px solid var(--line);
+                align-items: baseline; }
+  .trades .t:last-child { border-bottom: 0; }
+  .trades .side { font: 600 12px/1.5 var(--mono); letter-spacing: .08em; text-transform: uppercase;
+                  width: 74px; flex: none; }
+  .trades .side.buy { color: var(--gain); }
+  .trades .side.sell { color: var(--loss); }
+  .trades .side.moved { color: var(--ink-faint); }
+  .trades .mid { flex: 1; min-width: 0; }
+  .trades .mid b { font-weight: 600; }
+  .trades .mid .det { display: block; font: 12px/1.5 var(--mono); color: var(--ink-faint); margin-top: 2px; }
+  .trades .mid .said { display: block; font-size: 13px; color: var(--ink-soft); margin-top: 5px; }
+  .trades .right { text-align: right; font-family: var(--mono); font-size: 13px;
+                   font-variant-numeric: tabular-nums; flex: none; }
+  .trades .right .ago { display: block; font-size: 11.5px; color: var(--ink-faint); margin-top: 3px; }
+  .trades a { color: var(--accent); text-decoration: none; font-size: 11.5px; }
+  .trades a:hover { text-decoration: underline; }
+
   /* criteria, run control, log, chat */
   .opts { display: grid; gap: 16px; margin-top: 4px; }
   .opt .lab { font: 11px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase;
@@ -200,6 +218,13 @@
       <button class="ghost" id="wall" type="button">Withdraw everything</button>
     </div>
     <p class="status" id="status"></p>
+  </div>
+
+  <div class="panel">
+    <h2>Trades</h2>
+    <p class="note" style="margin-top:0">Every trade this desk has made, read from chain — so
+    this is the same history whoever is looking.</p>
+    <div class="trades" id="trades"><p class="empty">Reading from chain…</p></div>
   </div>
 
   <div class="panel">
@@ -399,6 +424,8 @@
 
     /* The band. Every figure here is derived, so any of them can be unknown —
        show a dash rather than a zero, which would read as "flat" not "unsure". */
+    paintTrades(pnl);
+
     if (pnl) {
       const money = (n) => (n >= 0 ? "+" : "−") + usd(Math.abs(n)).slice(1);
       const paint = (id, n, note) => {
@@ -546,6 +573,57 @@
     catch { kn("Could not copy — select the key above instead.", "err"); }
   });
 
+
+
+  /* The chain says what happened; the agent's own log says why, when the
+     person looking happens to be the one whose browser made the decision.
+     Keyed by transaction hash so a reason can never attach to the wrong trade. */
+  function paintTrades(pnl) {
+    const el = $("trades");
+    if (!pnl || !pnl.history || !pnl.history.length) {
+      el.innerHTML = '<p class="empty">No trades yet. When the agent acts, every trade appears here.</p>';
+      return;
+    }
+    const reasons = new Map();
+    try {
+      for (const e of (window.WSAgent ? window.WSAgent.readLog(vault) : []))
+        if (e.hash) reasons.set(e.hash.toLowerCase(), e.why);
+    } catch {}
+
+    const ago = (block) => {
+      if (!pnl.head || !block) return "";
+      const secs = Math.max(0, (pnl.head - block) * 0.25);
+      if (secs < 90) return "just now";
+      if (secs < 5400) return Math.round(secs / 60) + "m ago";
+      if (secs < 172800) return Math.round(secs / 3600) + "h ago";
+      return Math.round(secs / 86400) + "d ago";
+    };
+
+    el.innerHTML = pnl.history.slice(0, 60).map((h) => {
+      const why = reasons.get((h.hash || "").toLowerCase());
+      const side = h.kind === "buy" ? "buy" : h.kind === "sell" ? "sell" : "moved";
+      const label = h.kind === "buy" ? "Bought" : h.kind === "sell" ? "Sold" : "Withdrawn";
+      const det = h.kind === "withdrawn"
+        ? h.qty.toFixed(4) + " " + h.symbol + " sent to the owner"
+        : h.qty.toFixed(4) + " @ $" + h.price.toPrecision(6);
+      const right = h.kind === "withdrawn" ? "—" : usd(h.usd);
+      const pl = h.realised === null || h.realised === undefined ? ""
+        : '<span class="' + (h.realised >= 0 ? "up" : "down") + '">' +
+          (h.realised >= 0 ? "+" : "\u2212") + usd(Math.abs(h.realised)).slice(1) + " realised</span>";
+      return '<div class="t">' +
+        '<span class="side ' + side + '">' + label + '</span>' +
+        '<span class="mid"><b>$' + h.symbol + '</b> ' + pl +
+          '<span class="det">' + det + '</span>' +
+          (why ? '<span class="said">' + why + '</span>' : "") +
+        '</span>' +
+        '<span class="right">' + right +
+          '<span class="ago">' + ago(h.block) +
+            (h.hash ? ' · <a href="' + window.WS.explorer + '/tx/' + h.hash + '" target="_blank" rel="noopener">tx</a>' : "") +
+          '</span>' +
+        '</span>' +
+      '</div>';
+    }).join("");
+  }
 
   /* ---- the agent: criteria, the loop, the log, the conversation ---- */
   const A = window.WSAgent;
