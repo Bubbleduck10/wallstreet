@@ -77,6 +77,12 @@
   .trades a { color: var(--accent); text-decoration: none; font-size: 11.5px; }
   .trades a:hover { text-decoration: underline; }
 
+  .keyin { gap: 10px; }
+  .keyin input { flex: 1; min-width: 0; background: var(--field); border: 1px solid var(--line);
+                 color: var(--ink); border-radius: 8px; padding: 10px 12px;
+                 font: 13px/1.4 var(--mono); }
+  .keyin input:focus { outline: none; border-color: var(--accent); }
+
   /* criteria, run control, log, chat */
   .opts { display: grid; gap: 16px; margin-top: 4px; }
   .opt .lab { font: 11px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase;
@@ -301,6 +307,12 @@
     other than a browser tab:</p>
     <div class="row">
       <button class="ghost" id="recover" type="button">Recover the agent key</button>
+    </div>
+    <p class="note">Hired before the key was derivable? Its key is the <code>agent.key</code> file
+    downloaded at the time. It is checked against the vault before anything is kept.</p>
+    <div class="row keyin">
+      <input id="kin" type="password" placeholder="0x… the desk's agent key" autocomplete="off" spellcheck="false">
+      <button class="ghost" id="kuse" type="button">Use this key</button>
     </div>
     <div class="keybox" id="kbox" hidden>
       <div class="keyrow"><span class="k">agent</span><span id="kagent"></span></div>
@@ -561,6 +573,31 @@
     } finally { btn.disabled = false; }
   });
 
+  /* A pasted key is checked the same way a derived one is: against the agent
+     the vault actually names. A key that does not match is not stored, because
+     a wrong key stored is a desk that fails later for no visible reason. */
+  $("kuse").addEventListener("click", async () => {
+    const raw = $("kin").value.trim();
+    if (!raw) return kn("Paste the key first.", "err");
+    const priv = (raw.startsWith("0x") ? raw : "0x" + raw).toLowerCase();
+    if (!/^0x[0-9a-f]{64}$/.test(priv))
+      return kn("That does not look like a key — it should be 64 hex characters.", "err");
+    try {
+      const { addressOf } = await import("./vendor/keygen.js");
+      const addr = addressOf(priv);
+      const onchain = addrOf(word(await call(vault, SEL.agent), 0));
+      if (addr.toLowerCase() !== onchain.toLowerCase())
+        return kn("That key is " + addr.slice(0, 10) + "…, but this desk's agent is " +
+                  onchain.slice(0, 10) + "…. It belongs to a different desk.", "err");
+      try { localStorage.setItem("ws.agent." + owner.toLowerCase(), priv); } catch {}
+      $("kin").value = "";
+      kn("Matches this desk's agent. Press Start trading above.");
+      runNote("");
+    } catch (e) {
+      kn((e && (e.message || String(e))) || "Could not read that key.", "err");
+    }
+  });
+
   $("kdl").addEventListener("click", () => {
     if (!recovered) return;
     const blob = new Blob([recovered + "\n"], { type: "text/plain" });
@@ -722,7 +759,12 @@
       method: "personal_sign", params: [AGENT_MESSAGE(from), from],
     });
     const priv = await deriveKey(sig);
-    if (!matches(priv)) throw new Error("key-mismatch");
+    if (!matches(priv)) {
+      const err = new Error("key-mismatch");
+      err.derived = addressOf(priv);
+      err.expected = onchain;
+      throw err;
+    }
     try { localStorage.setItem(KEYSTORE(), priv); } catch {}
     return priv;
   }
@@ -737,8 +779,10 @@
       return "That is not this desk's owner. Switch to " + (owner || "").slice(0, 10) +
              "… — its key comes from that wallet's signature.";
     if (m === "key-mismatch")
-      return "That signature does not derive this desk's agent. Your wallet may be signing " +
-             "non-deterministically, or the desk was hired from another wallet.";
+      return "That signature derives " + (e.derived || "").slice(0, 10) + "…, but this desk's agent is " +
+             (e.expected || "").slice(0, 10) + "…. Desks hired before the key became derivable were given " +
+             "a random one instead — it is the agent.key that was downloaded at the time. " +
+             "Paste it under “Running it” below.";
     return null;
   };
 
