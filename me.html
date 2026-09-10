@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="brand/favicon-64.png?v=1" sizes="64x64" type="image/png">
+<link rel="icon" href="brand/favicon-32.png?v=1" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="brand/favicon-180.png?v=1">
+<meta property="og:title" content="WallStreet — your desks">
+<meta property="og:description" content="Every desk you own, its book, and what its strategy actually did with the money.">
+<meta property="og:image" content="https://wallstreetrh.xyz/brand/og.png?v=1">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+<title>WallStreet — your desks</title>
+<style>
+  :root {
+    --ink: #e8e4dc; --ink-soft: #9aa4ae; --ink-faint: #8c96a1;
+    --paper: #1b2026; --panel: #232a31; --line: #333c45; --line-2: #3d474f;
+    --field: #1a1f25; --desk: #d9cdb8; --carpet: #6f7d8c;
+    --gain: #5cc07d; --loss: #e0836f; --warn: #d2a33c; --bad: #dd7d6b;
+    --page: 940px;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, "Segoe UI", system-ui, sans-serif;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --ink: #23282e; --ink-soft: #4f5a64; --ink-faint: #6b7580;
+      --paper: #f2efe9; --panel: #fbf9f5; --line: #d8d2c6; --line-2: #c4bcac;
+      --field: #e7e2d8; --desk: #8a7443; --carpet: #5d6a78;
+      --gain: #2f7a4f; --loss: #b1402c; --warn: #8a6414; --bad: #b1402c;
+    }
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font: 15px/1.55 var(--sans); }
+  a { color: inherit; }
+  .wrap { max-width: var(--page); margin: 0 auto; padding: 30px 24px 80px; }
+
+  .topbar { border-bottom: 1px solid var(--line); background: var(--paper);
+            position: sticky; top: 0; z-index: 20; }
+  .topbar .in { max-width: var(--page); margin: 0 auto; padding: 0 24px; height: 60px;
+                display: flex; align-items: center; justify-content: space-between; }
+  .topbar .mark { font: 600 18px/1 var(--sans); letter-spacing: -.02em; text-decoration: none; }
+  .topbar .mark em { font-style: normal; color: var(--carpet); }
+  .topbar nav { display: flex; gap: 20px; align-items: center; font-size: 14px; }
+  .topbar nav a { color: var(--ink-soft); text-decoration: none; }
+  .topbar nav a:hover { color: var(--ink); }
+  .topbar .clock { font: 12px/1 var(--mono); color: var(--ink-soft); padding: 6px 11px;
+                   border: 1px solid var(--line-2); border-radius: 999px; }
+
+  .back { display: inline-block; font-size: 13px; color: var(--ink-soft);
+          text-decoration: none; margin-bottom: 10px; }
+  .back:hover { color: var(--ink); }
+  h1 { font: 600 32px/1.1 var(--sans); letter-spacing: -.03em; margin: 8px 0 6px; }
+  .lede { color: var(--ink-soft); max-width: 56ch; margin: 0; }
+  .who { font: 12.5px/1.5 var(--mono); color: var(--ink-faint); margin-top: 8px; word-break: break-all; }
+
+  button { font: 600 14px/1 var(--sans); padding: 0 20px; height: 44px; border-radius: 8px;
+           border: 1px solid #c3b79f; background: var(--desk); color: #23282e; cursor: pointer; }
+  button.ghost { background: transparent; color: var(--ink); border-color: var(--line-2);
+                 font-weight: 500; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 20px; }
+  .status { font-size: 13.5px; color: var(--ink-soft); margin-top: 12px; min-height: 20px; }
+  .status.err { color: var(--bad); }
+
+  .band { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+          gap: 1px; background: var(--line); border: 1px solid var(--line);
+          border-radius: 9px; overflow: hidden; margin: 24px 0 8px; }
+  .cell { background: var(--field); padding: 16px 18px; }
+  .cell .k { font: 11px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase;
+             color: var(--ink-faint); }
+  .cell .v { font: 600 27px/1.15 var(--sans); margin-top: 7px; letter-spacing: -.025em;
+             font-variant-numeric: tabular-nums; }
+  .cell .n { font-size: 12px; color: var(--ink-soft); margin-top: 3px; }
+  .up { color: var(--gain); } .down { color: var(--loss); }
+
+  h2 { font: 600 20px/1.2 var(--sans); letter-spacing: -.02em; margin: 34px 0 10px; }
+  .note { font-size: 13.5px; color: var(--ink-soft); margin-top: 10px; }
+  .note.warn { color: var(--warn); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th { text-align: left; font: 11px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase;
+       color: var(--ink-faint); padding: 0 12px 9px 0; border-bottom: 1px solid var(--line);
+       white-space: nowrap; }
+  td { padding: 13px 12px 13px 0; border-bottom: 1px solid var(--line); vertical-align: baseline; }
+  th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td.num { font-family: var(--mono); font-size: 13px; }
+  .desk a { font-weight: 600; text-decoration: none; }
+  .desk a:hover { text-decoration: underline; }
+  .sub { display: block; font: 11.5px/1.4 var(--mono); color: var(--ink-faint); margin-top: 4px; }
+  .swatch { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 4px; }
+  .pct { display: block; font: 11.5px/1 var(--mono); margin-top: 3px; opacity: .85; }
+  .empty { color: var(--ink-soft); padding: 26px 0; }
+  .wrapx { overflow-x: auto; }
+
+  .slots { display: flex; gap: 6px; margin-top: 10px; }
+  .slots i { width: 26px; height: 8px; border-radius: 2px; background: var(--line-2); }
+  .slots i.on { background: var(--desk); }
+  footer { margin-top: 44px; padding-top: 22px; border-top: 1px solid var(--line);
+           font: 12.5px/1.7 var(--mono); color: var(--ink-faint); }
+</style>
+</head>
+<body>
+<div class="topbar"><div class="in">
+  <a class="mark" href="./">Wall<em>Street</em></a>
+  <nav>
+    <a href="./floor.html">The floor</a>
+    <a href="./leaderboard.html">Leaderboard</a>
+    <a href="./me.html">Your desks</a>
+    <a href="./mint.html">Hire a desk</a>
+    <span class="clock" id="wsclock">—</span>
+  </nav>
+</div></div>
+
+<div class="wrap">
+  <a class="back" href="./">&lsaquo; WallStreet</a>
+  <h1>Your desks</h1>
+  <p class="lede">Everything you own on this floor, read from chain. Connecting only reads your
+  address — there is nothing here to sign, and no transaction to approve.</p>
+  <p class="who" id="who" hidden></p>
+
+  <div class="row" id="connectRow">
+    <button id="connect" type="button">Connect wallet</button>
+    <button class="ghost" id="readonly" type="button">Or paste an address</button>
+  </div>
+  <p class="status" id="status"></p>
+
+  <div id="profile" hidden>
+    <div class="band" id="band"></div>
+    <p class="note" id="cover" hidden></p>
+
+    <h2>Position slots</h2>
+    <p class="note" style="margin-top:0" id="slotnote">—</p>
+    <div class="slots" id="slots"></div>
+
+    <h2>Desks</h2>
+    <div class="wrapx" id="desks"></div>
+
+    <p class="note">Positions are marked at the pool mid price, which is not what an exit would
+    fetch. Cost basis is replayed from each vault&rsquo;s own trades.</p>
+  </div>
+
+  <footer>
+    <p>These are memecoin-adjacent instruments on an experimental chain, not securities, and
+    nothing here is financial advice.</p>
+  </footer>
+</div>
+
+<script src="sectors.js"></script>
+<script src="pnl.js"></script>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const st = (m, k) => { const e = $("status"); e.textContent = m || ""; e.className = "status " + (k || ""); };
+  const { replay, scan, addrOf, word, big, pad } = window.WSBasis;
+
+  const RPC = window.WS.rpc, USDG = window.WS.usdg.toLowerCase(), UD = window.WS.usdgDecimals;
+  const SEL = {
+    vaultsOf: "0x6cc811f8", positionLimit: "0xb0caa891",
+    balanceOf: "0x70a08231", mandate: "0x39b1b96d", agent: "0xf5ff5c76",
+  };
+  const COMMISSIONED = "0xf700cd10a3db75a8f38e71c86dc6946f5f193a0e17bcaa5dab1fef3c11703a43";
+  const SLOT0 = "0x3850c7bd";
+
+  const rpc = async (m, p) => {
+    const r = await fetch(RPC, { method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: m, params: p }) });
+    const j = await r.json();
+    if (j.error) throw new Error(j.error.message);
+    return j.result;
+  };
+  const call = (to, data) => rpc("eth_call", [{ to, data }, "latest"]);
+  const usd = (n) => "$" + Math.abs(n).toLocaleString(undefined,
+    { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const signed = (n) => (n >= 0 ? "+" : "−") + usd(n);
+  const short = (a) => a.slice(0, 6) + "…" + a.slice(-4);
+
+  const priceFromSlot0 = (s0, stock, dec) => {
+    const sq = big("0x" + word(s0, 0));
+    if (sq === 0n) return 0;
+    const sp = Number(sq) / 2 ** 96, ratio = sp * sp;
+    if (!isFinite(ratio) || ratio === 0) return 0;
+    return (stock.toLowerCase() < USDG ? ratio : 1 / ratio) * 10 ** (dec - UD);
+  };
+
+  const cell = (k, v, n, cls) =>
+    `<div class="cell"><div class="k">${k}</div>` +
+    `<div class="v ${cls || ""}">${v}</div>` +
+    `<div class="n">${n || ""}</div></div>`;
+
+  async function show(me) {
+    st("Reading your desks from chain…");
+    $("who").hidden = false;
+    $("who").textContent = me;
+
+    const byAddr = new Map(window.TOKENS.map((t) => [t.address.toLowerCase(), t]));
+
+    /* One call gives the list; the Commissioned events give what each was
+       funded with, which the vault itself does not remember. */
+    const raw = await call(window.WS.factory, SEL.vaultsOf + pad(me));
+    const n = Number(big("0x" + word(raw, 1)));
+    const vaults = [];
+    for (let i = 0; i < n; i++) vaults.push(addrOf(word(raw, 2 + i)));
+
+    if (!vaults.length) {
+      $("profile").hidden = false;
+      $("band").innerHTML = cell("Desks", "0", "none hired yet");
+      $("desks").innerHTML =
+        '<p class="empty">You have no desks on this floor yet. ' +
+        '<a href="./mint.html">Hire one</a> — from 100 USDG.</p>';
+      $("slotnote").textContent = "You would start with three positions per desk.";
+      // show the pips even with no desks, or the note describes something invisible
+      $("slots").innerHTML = Array.from({ length: 8 }, (_, i) =>
+        `<i class="` + (i < 3 ? "on" : "") + `"></i>`).join("");
+      st("");
+      return;
+    }
+
+    const commissioned = await scan({
+      address: window.WS.factory, topics: [COMMISSIONED, null, "0x" + pad(me)],
+    });
+    const funded = new Map();
+    for (const l of commissioned.logs)
+      funded.set(addrOf(l.topics[1]), Number(big("0x" + word(l.data, 1))) / 10 ** UD);
+
+    /* Mark every stock once, then reuse across all of this owner's desks. */
+    const marks = new Map();
+    for (let i = 0; i < window.TOKENS.length; i += 6) {
+      await Promise.all(window.TOKENS.slice(i, i + 6).map(async (t) => {
+        try { marks.set(t.address.toLowerCase(),
+          priceFromSlot0(await call(t.pool, SLOT0), t.address, t.decimals)); }
+        catch { marks.set(t.address.toLowerCase(), 0); }
+      }));
+    }
+
+    const rows = [];
+    let partial = false;
+    for (const v of vaults) {
+      const [cashRaw, mandateRaw, logs] = await Promise.all([
+        call(window.WS.usdg, SEL.balanceOf + pad(v)),
+        call(v, SEL.mandate),
+        scan({ address: v }),
+      ]);
+      if (!logs.complete) partial = true;
+      const out = replay(logs.logs, byAddr);
+      const cash = Number(big(cashRaw)) / 10 ** UD;
+      const mandate = Number(big(mandateRaw));
+
+      let positions = 0, unreal = 0, held = 0;
+      for (const [addr, lot] of out.lots) {
+        if (lot.shares <= 1e-12) continue;
+        const val = lot.shares * (marks.get(addr) || 0);
+        positions += val; unreal += val - lot.cost; held += 1;
+      }
+      const sectors = [];
+      for (let s = 0; s < 16; s++) if (mandate & (1 << s)) sectors.push(s);
+      const fundedNet = (funded.get(v) || 0) - out.cashOut;
+      rows.push({
+        vault: v, sectors, cash, positions, held,
+        book: cash + positions, realised: out.realised, unreal,
+        total: out.realised + unreal, trades: out.trades,
+        funded: fundedNet,
+        pct: fundedNet > 0 ? ((out.realised + unreal) / fundedNet) * 100 : 0,
+      });
+    }
+
+    const sum = (k) => rows.reduce((a, r) => a + r[k], 0);
+    const book = sum("book"), total = sum("total"), fundedAll = sum("funded");
+    const pct = fundedAll > 0 ? (total / fundedAll) * 100 : 0;
+
+    $("band").innerHTML =
+      cell("Desks", String(rows.length), rows.length === 1 ? "one desk" : "on this floor") +
+      cell("Book", usd(book), "cash and positions") +
+      cell("Total P&L", signed(total),
+           (pct >= 0 ? "+" : "−") + Math.abs(pct).toFixed(1) + "% on funding",
+           total >= 0 ? "up" : "down") +
+      cell("Trades", String(sum("trades")), "across every desk");
+
+    /* Slots are a property of the owner, not the desk — they move with the
+       tokens, so they are shown here rather than on any one desk. */
+    let limit = 3;
+    try { limit = Number(big(await call(window.WS.factory, SEL.positionLimit + pad(me)))); } catch {}
+    $("slots").innerHTML = Array.from({ length: 8 }, (_, i) =>
+      `<i class="${i < limit ? "on" : ""}"></i>`).join("");
+    $("slotnote").textContent = limit <= 3
+      ? "Three per desk. $WALLSTREET is not launched yet, so every owner has the base limit — "
+        + "holding it will add one slot per 250,000, to a maximum of eight."
+      : limit + " per desk, from the $WALLSTREET you hold. Move the tokens and the slots move too.";
+
+    $("desks").innerHTML =
+      '<table><tr><th>Desk</th><th>Mandate</th><th class="num">Funded</th>' +
+      '<th class="num">Book</th><th class="num">P&L</th><th class="num">Trades</th></tr>' +
+      rows.map((d) => {
+        const cls = d.total >= 0 ? "up" : "down";
+        const sw = d.sectors.slice(0, 3).map((s) =>
+          `<span class="swatch" style="background:${window.SECTORS[s].colour}"></span>`).join("") +
+          (d.sectors.length > 3 ? ` +${d.sectors.length - 3}` : "");
+        return `<tr>
+          <td class="desk"><a href="desk.html?v=${d.vault}">Desk ${d.vault.slice(2, 8).toUpperCase()}</a>
+            <span class="sub">${d.held ? d.held + (d.held === 1 ? " position" : " positions") : "flat"}</span></td>
+          <td>${sw}<span class="sub">${d.sectors.map((s) => window.SECTORS[s].name).slice(0, 2).join(", ")}</span></td>
+          <td class="num">${usd(d.funded)}</td>
+          <td class="num">${usd(d.book)}</td>
+          <td class="num ${cls}">${signed(d.total)}
+            <span class="pct">${d.pct >= 0 ? "+" : "−"}${Math.abs(d.pct).toFixed(1)}%</span></td>
+          <td class="num">${d.trades}</td>
+        </tr>`;
+      }).join("") + "</table>";
+
+    if (partial) {
+      const c = $("cover");
+      c.hidden = false; c.className = "note warn";
+      c.textContent = "Some of these desks traded further back than the node would serve logs for, " +
+        "so their figures are a floor rather than a full history.";
+    }
+    $("profile").hidden = false;
+    st("");
+  }
+
+  $("connect").addEventListener("click", async () => {
+    if (!window.ethereum) return st("No wallet found in this browser.", "err");
+    try {
+      const [acct] = await window.ethereum.request({ method: "eth_requestAccounts" });
+      if (!acct) return st("No account returned.", "err");
+      history.replaceState(null, "", "?a=" + acct);
+      await show(acct.toLowerCase());
+    } catch (e) { st(e.message || "Could not connect.", "err"); }
+  });
+
+  /* A read-only view, so a desk can be looked at without a wallet at all —
+     and so anyone can check what an owner holds without being them. */
+  $("readonly").addEventListener("click", async () => {
+    const a = prompt("Address to look up");
+    if (!a) return;
+    if (!/^0x[0-9a-fA-F]{40}$/.test(a.trim())) return st("That is not an address.", "err");
+    history.replaceState(null, "", "?a=" + a.trim());
+    try { await show(a.trim().toLowerCase()); } catch (e) { st(e.message, "err"); }
+  });
+
+  (async () => {
+    if (!window.WS.factory) {
+      st("The floor has not been deployed yet.", "err");
+      $("connectRow").hidden = true;
+      return;
+    }
+    const q = new URLSearchParams(location.search).get("a");
+    if (q && /^0x[0-9a-fA-F]{40}$/.test(q)) { try { await show(q.toLowerCase()); } catch (e) { st(e.message, "err"); } return; }
+    // already-connected wallets show without a second click
+    if (window.ethereum) {
+      try {
+        const [acct] = await window.ethereum.request({ method: "eth_accounts" });
+        if (acct) await show(acct.toLowerCase());
+      } catch {}
+    }
+  })();
+})();
+</script>
+<script>
+(() => {
+  const el = document.getElementById("wsclock");
+  const tick = () => {
+    const et = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
+    const day = et.getDay(), m = et.getHours() * 60 + et.getMinutes();
+    let n = "Overnight", end = null;
+    if (day === 0 || day === 6) n = "Weekend";
+    else if (m >= 240 && m < 570) { n = "Pre-market"; end = 570; }
+    else if (m >= 570 && m < 960) { n = "Open"; end = 960; }
+    else if (m >= 960 && m < 1200) { n = "After hours"; end = 1200; }
+    let t = n;
+    if (end) { const left = end - m;
+      if (left > 0) t += " · " + (left >= 60 ? Math.floor(left / 60) + "h " : "") + (left % 60) + "m left"; }
+    el.textContent = t;
+  };
+  tick(); setInterval(tick, 20000);
+})();
+</script>
+</body>
+</html>
