@@ -77,6 +77,15 @@
   .trades a { color: var(--accent); text-decoration: none; font-size: 11.5px; }
   .trades a:hover { text-decoration: underline; }
 
+  .keep { display: flex; gap: 11px; align-items: flex-start; margin-top: 16px;
+           padding: 14px 15px; border: 1px solid var(--line); border-radius: 9px;
+           background: var(--field); cursor: pointer; }
+  .keep input { margin: 2px 0 0; width: 16px; height: 16px; flex: none; accent-color: var(--accent); }
+  .keep b { font-weight: 600; font-size: 14px; display: block; }
+  .keep .sub { display: block; font-size: 12.5px; color: var(--ink-soft); margin-top: 4px; line-height: 1.5; }
+  .keep.on { border-color: var(--accent); background: var(--accent-soft); }
+  .keep.busy { opacity: .6; pointer-events: none; }
+
   .keyin { gap: 10px; }
   .keyin input { flex: 1; min-width: 0; background: var(--field); border: 1px solid var(--line);
                  color: var(--ink); border-radius: 8px; padding: 10px 12px;
@@ -282,6 +291,16 @@
       <span class="pulse" id="pulse"></span>
       <span class="runstate" id="runState">Not running.</span>
     </div>
+    <label class="keep" id="keeprow">
+      <input type="checkbox" id="keep">
+      <span>
+        <b>Keep trading when I close the tab</b>
+        <span class="sub" id="keepnote">Your desk's trading key is copied to WallStreet's server so it
+        can keep working while you are away. It still cannot withdraw — only you can — and you can
+        stop and forget it at any time.</span>
+      </span>
+    </label>
+
     <div class="row" id="gasrow" hidden>
       <button class="ghost" id="gasBtn" type="button">Send the agent 0.01 ETH for gas</button>
       <span class="runstate" id="gasnote"></span>
@@ -994,6 +1013,12 @@
 
   /* One way in, whether it was a click or a page that came back. */
   function begin() {
+    if (kept) {
+      runState("Not running.");
+      runNote("The server is already trading this desk. Untick “keep trading” first if you would " +
+              "rather drive it from this tab.", "err");
+      return;
+    }
     if (claimedElsewhere()) {
       runState("Not running.");
       runNote("This desk is already running in another tab. Two tabs would sign with the same " +
@@ -1017,6 +1042,11 @@
      so instead of failing quietly. Called once the desk has been read, since
      the key is checked against an owner this page does not know before then. */
   async function resumeIfRunning() {
+    await refreshKeeper();
+    if (kept) {                       // the server has it; this tab is a viewer
+      rememberRunning(false);
+      return;
+    }
     if (!wasRunning() || running) return;
     try {
       await agentKey();
@@ -1037,6 +1067,112 @@
     } catch (e) {
       $("gasnote").textContent = (e && (e.message || String(e))) || "Could not send.";
     } finally { b.disabled = false; }
+  });
+
+  /* ---- the keeper -----------------------------------------------------
+     The server trades a desk whose key it has been given, on a schedule, so a
+     closed tab is not a stopped desk. Enabling proves ownership with a
+     signature the server recovers and checks against the chain — this page
+     asserting "I am the owner" would not be worth anything. */
+  const BRAIN = (window.WS && window.WS.brain) || "";
+  let kept = false;
+
+  const keeperMessage = (v, ts) =>
+    "WallStreet keeper v1\n\n" +
+    "Let WallStreet's server keep trading this desk while your browser is closed.\n" +
+    "It holds only the desk's trading key. It can never withdraw — only you can.\n\n" +
+    "Desk: " + v.toLowerCase() + "\n" +
+    "Time: " + ts;
+
+  const keeperPost = async (what, body) => {
+    const r = await fetch(BRAIN + "/keeper/" + what, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ vault, ...body }),
+    });
+    const j = await r.json();
+    if (j.error) throw new Error(j.error);
+    return j;
+  };
+
+  const keepNote = (m) => { $("keepnote").textContent = m; };
+
+  const paintKeeper = (st) => {
+    kept = !!(st && st.enabled);
+    $("keep").checked = kept;
+    $("keeprow").classList.toggle("on", kept);
+    if (!kept) {
+      keepNote("Your desk's trading key is copied to WallStreet's server so it can keep working " +
+               "while you are away. It still cannot withdraw — only you can — and you can stop " +
+               "and forget it at any time.");
+      return;
+    }
+    const last = st.lastDecideAt
+      ? new Date(st.lastDecideAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+      : "not yet";
+    keepNote("The server is trading this desk. Last decision: " + last + ". This tab does not need " +
+             "to stay open. Untick to stop it and have the key forgotten.");
+    if (st.log && st.log.length) {
+      const l = st.log[st.log.length - 1];
+      runState("Kept by the server. Last: " + (l.human || l.kind) + ".");
+    } else {
+      runState("Kept by the server.");
+    }
+  };
+
+  async function refreshKeeper() {
+    if (!BRAIN) { $("keeprow").hidden = true; return; }
+    try { paintKeeper(await keeperPost("status", {})); } catch { /* leave it alone */ }
+  }
+
+  $("keep").addEventListener("change", async () => {
+    const want = $("keep").checked;
+    const row = $("keeprow");
+    row.classList.add("busy");
+    try {
+      if (!BRAIN) throw new Error("No server is configured for this site.");
+      const [from] = await window.ethereum.request({ method: "eth_requestAccounts" });
+      if (!from || from.toLowerCase() !== (owner || "").toLowerCase())
+        throw new Error("Connect the wallet that owns this desk.");
+
+      const ts = Date.now();
+      keepNote(want ? "Approve the signature to hand the desk over…"
+                    : "Approve the signature to stop it…");
+      const signature = await window.ethereum.request({
+        method: "personal_sign", params: [keeperMessage(vault, ts), from],
+      });
+
+      if (want) {
+        /* The key goes over once, to a server that has proved nothing to us —
+           so the owner is told plainly what is happening, above, before the
+           box is ever ticked. */
+        const priv = await agentKey();
+        await keeperPost("enable", { ts, signature, key: priv, cfg });
+
+        /* One driver: stop this tab's loop so the two cannot race on a nonce. */
+        if (running) {
+          running = false;
+          rememberRunning(false);
+          stopSampling();
+          stopHeart();
+          clearTimeout(timer);
+          $("runBtn").textContent = "Start trading";
+          $("pulse").className = "pulse on";
+        }
+        runNote("");
+      } else {
+        await keeperPost("disable", { ts, signature });
+        $("pulse").className = "pulse";
+        runState("Not running.");
+        runNote("The server has forgotten the key. This desk trades only while this tab is open " +
+                "and running.");
+      }
+      await refreshKeeper();
+    } catch (e) {
+      $("keep").checked = !want;
+      keepNote((e && (e.message || String(e))) || "That did not work.");
+    } finally {
+      row.classList.remove("busy");
+    }
   });
 
   /* ---- the conversation ---- */
