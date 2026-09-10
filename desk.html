@@ -819,6 +819,73 @@
     return null;
   };
 
+  /* Whether this desk should be trading is written down, so closing the tab
+     pauses it rather than losing it. It is per vault and per browser: it says
+     nothing to anybody else, and nothing runs while the tab is shut. */
+  const RUNKEY = () => "ws.run." + vault.toLowerCase();
+  const wasRunning = () => { try { return localStorage.getItem(RUNKEY()) === "1"; } catch { return false; } };
+  const rememberRunning = (on) => {
+    try { on ? localStorage.setItem(RUNKEY(), "1") : localStorage.removeItem(RUNKEY()); } catch {}
+  };
+
+  /* Which tab is driving this desk. Refreshed while it runs, so a tab that
+     was closed stops holding the claim within a heartbeat or two. */
+  const TABKEY = () => "ws.tab." + vault.toLowerCase();
+  const TAB_ID = Math.random().toString(36).slice(2) + Date.now().toString(36);
+  const HEARTBEAT = 15000, STALE = 45000;
+  let heart = null;
+
+  const claim = () => { try { return JSON.parse(localStorage.getItem(TABKEY()) || "null"); } catch { return null; } };
+  const claimedElsewhere = () => {
+    const c = claim();
+    return !!(c && c.id !== TAB_ID && Date.now() - c.t < STALE);
+  };
+  const holdClaim = () => {
+    try { localStorage.setItem(TABKEY(), JSON.stringify({ id: TAB_ID, t: Date.now() })); } catch {}
+  };
+  const dropClaim = () => {
+    const c = claim();
+    if (c && c.id !== TAB_ID) return;               // never drop somebody else's
+    try { localStorage.removeItem(TABKEY()); } catch {}
+  };
+  const startHeart = () => { holdClaim(); clearInterval(heart); heart = setInterval(holdClaim, HEARTBEAT); };
+  const stopHeart = () => { clearInterval(heart); heart = null; dropClaim(); };
+  window.addEventListener("pagehide", () => { if (running) dropClaim(); });
+
+  /* Prices are sampled faster than the desk trades, so a trend exists before
+     the agent is next due to look. Without this the first four readings take
+     four pace intervals — forty minutes on the default — and the desk looks
+     broken for all of it. */
+  let sampler = null;
+  const sampleNow = async () => {
+    try {
+      const { hist } = await A.sample(vault);
+      if (!busy) showWaiting(hist);
+    } catch {}
+  };
+  const startSampling = () => {
+    if (sampler) return;
+    sampleNow();
+    sampler = setInterval(sampleNow, A.SAMPLE_MS);
+  };
+  const stopSampling = () => { clearInterval(sampler); sampler = null; };
+
+  /* What it is waiting for, in the words of the thing it is waiting on. */
+  function showWaiting(hist) {
+    if (!running || busy) return;
+    const r = A.readiness(vault, hist);
+    if (!r.enough) {
+      const left = Math.max(1, Math.ceil(((r.need - (r.most || 0)) * A.SAMPLE_MS) / 60000));
+      runState("Building price history — " + (r.most || 0) + " of " + r.need +
+               " readings. Can judge in about " + left + " min.");
+      return;
+    }
+    const left = Math.max(0, Math.round((nextAt - Date.now()) / 1000));
+    if (left > 0)
+      runState("Watching " + r.ready + " names. Next look in " +
+               (left > 60 ? Math.ceil(left / 60) + " min" : left + "s") + ".");
+  }
+
   const schedule = (ms) => {
     clearTimeout(timer);
     nextAt = Date.now() + ms;
@@ -843,6 +910,9 @@
       const problem = keyProblem(e);
       if (problem) {
         running = false;
+        rememberRunning(false);
+        stopSampling();
+        stopHeart();
         $("pulse").className = "pulse";
         $("runBtn").textContent = "Start trading";
         runState("Stopped.");
@@ -860,11 +930,7 @@
     }
   }
 
-  setInterval(() => {
-    if (!running || busy) return;
-    const left = Math.max(0, Math.round((nextAt - Date.now()) / 1000));
-    if (left > 0) runState("Watching. Next look in " + (left > 60 ? Math.ceil(left / 60) + " min" : left + "s") + ".");
-  }, 1000);
+  setInterval(() => { if (running && !busy) showWaiting(); }, 1000);
 
   $("runBtn").addEventListener("click", async () => {
     if (!running) {
@@ -896,14 +962,12 @@
       } catch { /* a balance we cannot read is not a reason to refuse to start */ }
 
       btn.disabled = false;
-      running = true;
-      btn.textContent = "Stop";
-      $("pulse").className = "pulse on";
-      runNote("Trading while this tab is open. Close it and the agent stops — nothing keeps " +
-              "running on a server, and nobody else holds your key.");
-      cycle();
+      begin();
     } else {
       running = false;
+      rememberRunning(false);
+      stopSampling();
+      stopHeart();
       clearTimeout(timer);
       $("runBtn").textContent = "Start trading";
       $("pulse").className = "pulse";
@@ -911,6 +975,40 @@
       runNote("");
     }
   });
+
+  /* One way in, whether it was a click or a page that came back. */
+  function begin() {
+    if (claimedElsewhere()) {
+      runState("Not running.");
+      runNote("This desk is already running in another tab. Two tabs would sign with the same " +
+              "key at the same time, so only one drives it. Stop it there, or close that tab.", "err");
+      return;
+    }
+    running = true;
+    startHeart();
+    rememberRunning(true);
+    $("runBtn").textContent = "Stop";
+    $("pulse").className = "pulse on";
+    runNote("Trading while this tab is open, and it picks up where it left off if you reload. " +
+            "Close the tab and it stops — nothing runs on a server, and nobody else holds your key.");
+    startSampling();
+    cycle();
+  }
+
+  /* A desk that was running when the tab closed starts again on its own. The
+     key is already here, so there is nothing to sign; if it is not, this says
+     so instead of failing quietly. Called once the desk has been read, since
+     the key is checked against an owner this page does not know before then. */
+  async function resumeIfRunning() {
+    if (!wasRunning() || running) return;
+    try {
+      await agentKey();
+      begin();
+    } catch (e) {
+      rememberRunning(false);
+      runNote(keyProblem(e) || "This desk was running, but it cannot start again in this browser.", "err");
+    }
+  }
 
   $("gasBtn").addEventListener("click", async () => {
     const b = $("gasBtn");
@@ -959,7 +1057,8 @@
   if (!window.WS.brain) runNote("No agent brain is configured for this site yet, so decisions " +
     "fall back to a plain rules engine.", "err");
 
-  load().catch((e) => st("Could not read this desk: " + e.message, "err"));
+  load().then(resumeIfRunning)
+        .catch((e) => st("Could not read this desk: " + e.message, "err"));
 })();
 </script>
 

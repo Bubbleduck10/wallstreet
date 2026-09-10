@@ -158,6 +158,30 @@
     return h;
   }
 
+  /* How often prices are read, as distinct from how often the desk trades.
+     Four readings a minute apart is an opinion in four minutes; four readings
+     a pace apart is an opinion in forty. */
+  const SAMPLE_MS = 60e3;
+
+  /** Read the desk and fold the prices into its history. No decision, no key. */
+  async function sample(vault) {
+    const desk = await readDesk(vault);
+    desk.vault = vault;
+    return { desk, hist: observe(vault, desk.universe) };
+  }
+
+  /** How close this desk is to being able to judge anything. */
+  function readiness(vault, hist) {
+    const h = hist || loadHist(vault);
+    const counts = Object.values(h).map((s) => s.length);
+    if (!counts.length) return { ready: 0, of: 0, need: 4, enough: false };
+    const ready = counts.filter((n) => n >= 4).length;
+    return {
+      ready, of: counts.length, need: 4, enough: ready > 0,
+      most: Math.max(0, ...counts),
+    };
+  }
+
   /* A move over roughly the last half hour, and how many samples that rests
      on. Two points is not a trend, and the engine says so rather than acting
      on noise. */
@@ -207,17 +231,26 @@
       .filter((t) => t.t.ready);
 
     if (!candidates.length)
-      return { action: null, why: "Still building price history — nothing has enough samples to judge yet." };
+      return { action: null, why: "Still building price history — no name has the four readings a " +
+        "trend needs yet. Prices are read every minute, so this clears in a few minutes." };
 
     let pick = null;
     if (cfg.style === "momentum") {
       const up = candidates.filter((c) => c.t.move >= r.minEdge).sort((a, b) => b.t.move - a.t.move);
       pick = up[0];
-      if (!pick) reasons.push(`nothing on the mandate is up more than ${(r.minEdge * 100).toFixed(1)}% over the last half hour`);
+      if (!pick) {
+        const best = candidates.slice().sort((a, b) => b.t.move - a.t.move)[0];
+        reasons.push(`nothing on the mandate is up more than ${(r.minEdge * 100).toFixed(1)}% over the last half hour` +
+          (best ? ` — the strongest is ${best.symbol} at ${(best.t.move * 100).toFixed(2)}%` : ""));
+      }
     } else if (cfg.style === "reversion") {
       const down = candidates.filter((c) => c.t.move <= -r.minEdge).sort((a, b) => a.t.move - b.t.move);
       pick = down[0];
-      if (!pick) reasons.push(`nothing on the mandate is down more than ${(r.minEdge * 100).toFixed(1)}% over the last half hour`);
+      if (!pick) {
+        const best = candidates.slice().sort((a, b) => a.t.move - b.t.move)[0];
+        reasons.push(`nothing on the mandate is down more than ${(r.minEdge * 100).toFixed(1)}% over the last half hour` +
+          (best ? ` — the furthest off is ${best.symbol} at ${(best.t.move * 100).toFixed(2)}%` : ""));
+      }
     } else {
       // spread: hold the deepest names the desk does not already own
       pick = candidates.sort((a, b) => b.depthUsd - a.depthUsd)[0];
@@ -429,6 +462,7 @@
   window.WSAgent = {
     RISK, PACE, DEFAULTS,
     loadCfg, saveCfg, readLog, appendLog, loadHist,
-    readDesk, decide, decideLocally, trend, observe, tick, sessionNow, ask,
+    readDesk, decide, decideLocally, trend, observe, sample, readiness, tick, sessionNow, ask,
+    SAMPLE_MS,
   };
 })();
