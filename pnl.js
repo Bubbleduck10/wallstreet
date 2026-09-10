@@ -27,13 +27,27 @@
   const addrOf = (w) => "0x" + (w || "").replace(/^0x/, "").slice(24).toLowerCase();
   const pad = (a) => a.toLowerCase().replace(/^0x/, "").padStart(64, "0");
 
-  const rpc = async (method, params) => {
+  /* Rate limiting is transient and a burst is normal here, so back off and
+     try again rather than surfacing it. Anything else fails at once: a
+     revert retried is just the same revert a second later. */
+  const TRANSIENT = /too many requests|rate limit|429|503|timeout|network/i;
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const rpc = async (method, params, attempt = 0) => {
     const r = await fetch(RPC, {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
     });
-    const j = await r.json();
-    if (j.error) throw new Error(j.error.message);
+    let j = null;
+    try { j = await r.json(); } catch { j = null; }
+    const problem = !r.ok || !j || j.error;
+    if (problem) {
+      const msg = (j && j.error && j.error.message) || ("HTTP " + r.status);
+      if (attempt < 4 && (r.status === 429 || TRANSIENT.test(msg))) {
+        await sleep(400 * 2 ** attempt + Math.random() * 250);
+        return rpc(method, params, attempt + 1);
+      }
+      throw new Error(msg);
+    }
     return j.result;
   };
 

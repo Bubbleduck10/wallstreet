@@ -373,11 +373,25 @@
   const addrOf = (w) => "0x" + w.slice(24);
   const usd = (n) => "$" + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-  const rpc = async (m, p) => {
+  /* This page is a burst — a price for every name on the mandate, balances, a
+     windowed log scan, the ledger — and the RPC rate-limits bursts. Without a
+     backoff the first 429 became a red error in front of somebody who had done
+     nothing wrong. Only the transient cases are retried: a revert retried is
+     the same revert a second later. */
+  const TRANSIENT = /too many requests|rate limit|429|503|timeout|network/i;
+  const rpc = async (m, p, attempt = 0) => {
     const r = await fetch(window.WS.rpc, { method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: m, params: p }) });
-    const j = await r.json();
-    if (j.error) throw new Error(j.error.message);
+    let j = null;
+    try { j = await r.json(); } catch { j = null; }
+    if (!r.ok || !j || j.error) {
+      const msg = (j && j.error && j.error.message) || ("HTTP " + r.status);
+      if (attempt < 4 && (r.status === 429 || TRANSIENT.test(msg))) {
+        await new Promise((s) => setTimeout(s, 400 * 2 ** attempt + Math.random() * 250));
+        return rpc(m, p, attempt + 1);
+      }
+      throw new Error(msg);
+    }
     return j.result;
   };
   const call = (to, data) => rpc("eth_call", [{ to, data }, "latest"]);
