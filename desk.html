@@ -21,6 +21,7 @@
     --accent: #4ea36a; --accent-soft: #1d2b23;
     --warn: #d2a33c; --warn-soft: #251f18; --bad: #dd7d6b;
     --desk: #d9cdb8; --carpet: #6f7d8c; --field: #1a1f25;
+    --gain: #5cc07d; --loss: #e0836f;
     --page: 820px;
     --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
     --serif: -apple-system, "Segoe UI", system-ui, sans-serif;
@@ -59,6 +60,21 @@
   .status { font-size: 13.5px; color: var(--ink-soft); margin-top: 12px; min-height: 20px; }
   .status.err { color: var(--bad); } .status.ok { color: var(--accent); font-weight: 600; }
   .note { font-size: 13.5px; color: var(--ink-soft); margin-top: 10px; }
+
+  .pnlband{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+           gap:1px;background:var(--line);border:1px solid var(--line);
+           border-radius:8px;overflow:hidden;margin:16px 0 20px}
+  .pnlstat{background:var(--field);padding:15px 17px}
+  .pnlstat .k{font:11px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;
+              color:var(--ink-faint)}
+  .pnlstat .v{font:600 26px/1.15 var(--serif);margin-top:6px;letter-spacing:-.02em;
+              font-variant-numeric:tabular-nums}
+  .pnlstat .n{font-size:12px;color:var(--ink-soft)}
+  .up{color:var(--gain)} .down{color:var(--loss)}
+  td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;
+                font-family:var(--mono);font-size:13px}
+  .sym{font-weight:600}
+  .pct{font:11.5px/1 var(--mono);display:block;margin-top:3px;opacity:.85}
 
   /* shared chrome ---------------------------------------------------- */
   .topbar { border-bottom: 1px solid var(--line); background: var(--paper);
@@ -107,8 +123,20 @@
   </div>
 
   <div class="panel">
-    <h2>Holding</h2>
+    <h2>Portfolio</h2>
+    <p class="note" style="margin-top:0">Cost basis is replayed from this vault&rsquo;s own
+    <code>Traded</code> events. Marks are the pool mid price, not what an exit would fetch —
+    in books this thin, selling moves the price against you.</p>
+
+    <div class="pnlband" id="pnlband" hidden>
+      <div class="pnlstat"><span class="k">Unrealised</span><div class="v" id="pl-unreal">—</div><span class="n" id="pl-unreal-n">open positions</span></div>
+      <div class="pnlstat"><span class="k">Realised</span><div class="v" id="pl-real">—</div><span class="n" id="pl-real-n">closed</span></div>
+      <div class="pnlstat"><span class="k">Total P&amp;L</span><div class="v" id="pl-total">—</div><span class="n" id="pl-total-n">since funding</span></div>
+      <div class="pnlstat"><span class="k">Net funded</span><div class="v" id="pl-funded">—</div><span class="n">USDG in, less out</span></div>
+    </div>
+
     <div id="positions"><p class="empty">Reading from chain…</p></div>
+    <p class="note" id="pnlnote" hidden></p>
   </div>
 
   <div class="panel">
@@ -131,6 +159,7 @@
 </div>
 
 <script src="sectors.js"></script>
+<script src="pnl.js"></script>
 <script>
 (() => {
   const $ = (id) => document.getElementById(id);
@@ -205,16 +234,67 @@
     $("book").textContent = usd(book);
     $("cash").textContent = usd(cash);
     $("npos").textContent = held.length;
+
+    /* Balances are the truth about what is held; the replayed basis only says
+       what it cost. Render from balances and attach basis where it is known,
+       so a position always shows even if its buy predates the log window. */
+    const marks = new Map(held.map((h) => [h.address.toLowerCase(), h.px]));
+    let pnl = null;
+    try { pnl = await window.loadPnl(vault, marks); } catch (e) { pnl = null; }
+    const basis = new Map((pnl ? pnl.rows : []).map((r) => [r.address, r]));
+
     $("positions").innerHTML = held.length
-      ? '<table><tr><th>Stock</th><th class="r">Quantity</th><th class="r">Price</th><th class="r">Value</th></tr>' +
+      ? '<table><tr><th>Stock</th><th class="num">Quantity</th><th class="num">Avg cost</th>' +
+        '<th class="num">Mark</th><th class="num">Value</th><th class="num">P&L</th></tr>' +
         held.map((h) => {
           const s = window.SECTORS[h.sector];
-          return `<tr><td><span class="swatch" style="background:${s.colour}"></span><b>$${h.symbol}</b>` +
+          const b = basis.get(h.address.toLowerCase());
+          const pl = b ? h.usd - b.cost : null;
+          const pct = b && b.cost > 0 ? (pl / b.cost) * 100 : null;
+          const cls = pl === null ? "" : pl >= 0 ? "up" : "down";
+          const sign = pl === null ? "" : pl >= 0 ? "+" : "−";
+          return `<tr><td><span class="swatch" style="background:${s.colour}"></span><span class="sym">${h.symbol}</span>` +
             `<span class="empty"> ${s.name}</span></td>` +
-            `<td class="r">${h.qty.toFixed(4)}</td><td class="r">${h.px ? "$" + h.px.toPrecision(6) : "—"}</td>` +
-            `<td class="r">${usd(h.usd)}</td></tr>`;
+            `<td class="num">${h.qty.toFixed(4)}</td>` +
+            `<td class="num">${b ? "$" + b.avg.toPrecision(6) : "—"}</td>` +
+            `<td class="num">${h.px ? "$" + h.px.toPrecision(6) : "—"}</td>` +
+            `<td class="num">${usd(h.usd)}</td>` +
+            `<td class="num ${cls}">${pl === null ? "—"
+              : sign + usd(Math.abs(pl)).slice(1) +
+                `<span class="pct">${sign}${Math.abs(pct).toFixed(1)}%</span>`}</td></tr>`;
         }).join("") + "</table>"
       : '<p class="empty">Flat — everything is in cash.</p>';
+
+    /* The band. Every figure here is derived, so any of them can be unknown —
+       show a dash rather than a zero, which would read as "flat" not "unsure". */
+    if (pnl) {
+      const money = (n) => (n >= 0 ? "+" : "−") + usd(Math.abs(n)).slice(1);
+      const paint = (id, n, note) => {
+        const e = $(id);
+        e.textContent = money(n);
+        e.className = "v " + (n >= 0 ? "up" : "down");
+        if (note) $(id + "-n").textContent = note;
+      };
+      paint("pl-unreal", pnl.unrealised,
+            pnl.rows.length + (pnl.rows.length === 1 ? " position" : " positions"));
+      paint("pl-real", pnl.realised, pnl.trades + (pnl.trades === 1 ? " trade" : " trades"));
+      paint("pl-total", pnl.total,
+            pnl.netFunded > 0
+              ? (pnl.total / pnl.netFunded * 100 >= 0 ? "+" : "−") +
+                Math.abs(pnl.total / pnl.netFunded * 100).toFixed(1) + "% on funding"
+              : "realised and unrealised");
+      $("pl-funded").textContent = usd(pnl.netFunded);
+      $("pnlband").hidden = false;
+
+      const n = $("pnlnote");
+      n.hidden = false;
+      n.textContent = pnl.coverage.complete
+        ? "Basis replayed from " + pnl.trades + " trade" + (pnl.trades === 1 ? "" : "s") +
+          " on chain."
+        : "Only blocks " + pnl.coverage.fromBlock.toLocaleString() + " onward were readable, " +
+          "so any earlier trades are missing from the basis and these figures are a floor, " +
+          "not a full history.";
+    }
 
     $("booknote").textContent = "agent " + agent.slice(0, 10) + "…";
     // Owner-only controls appear only once a wallet that is the owner connects.
