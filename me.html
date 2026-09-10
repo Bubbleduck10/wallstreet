@@ -94,6 +94,23 @@
   .empty { color: var(--ink-soft); padding: 26px 0; }
   .wrapx { overflow-x: auto; }
 
+  .ledger { margin: 6px 0 26px; }
+  .ledger .figs { display: flex; gap: 30px; flex-wrap: wrap; padding-bottom: 14px;
+                  border-bottom: 1px solid var(--line); }
+  .ledger .fig .k { font: 11px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase;
+                    color: var(--ink-faint); }
+  .ledger .fig .v { font: 400 24px/1.2 var(--sans); margin-top: 6px;
+                    font-variant-numeric: tabular-nums; }
+  .ledger .up { color: var(--gain); } .ledger .down { color: var(--loss); }
+  .ledger .r { display: flex; gap: 14px; align-items: baseline; padding: 11px 0;
+               border-bottom: 1px solid var(--line); font-size: 14px; }
+  .ledger .r:last-child { border-bottom: 0; }
+  .ledger .r .what { width: 128px; flex: none; font: 600 12px/1.5 var(--mono);
+                     letter-spacing: .06em; text-transform: uppercase; }
+  .ledger .r .in { color: var(--gain); } .ledger .r .out { color: var(--loss); }
+  .ledger .r .mid { flex: 1; min-width: 0; color: var(--ink-soft); font: 12.5px/1.5 var(--mono); }
+  .ledger .r .amt { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
   .slots { display: flex; gap: 6px; margin-top: 10px; }
   .slots i { width: 26px; height: 8px; border-radius: 2px; background: var(--line-2); }
   .slots i.on { background: var(--desk); }
@@ -122,13 +139,18 @@
 
   <div class="row" id="connectRow">
     <button id="connect" type="button">Connect wallet</button>
-    <button class="ghost" id="readonly" type="button">Or paste an address</button>
+    <button class="ghost" id="readonly" type="button">Look up an address</button>
   </div>
   <p class="status" id="status"></p>
 
   <div id="profile" hidden>
     <div class="band" id="band"></div>
     <p class="note" id="cover" hidden></p>
+
+    <h2>Money in and out</h2>
+    <p class="note" style="margin-top:0">Deposits are what you put into vaults; withdrawals are
+    what you have taken back. Open positions are in neither.</p>
+    <div class="ledger" id="ledger"><p class="note">Reading from chain…</p></div>
 
     <h2>Position slots</h2>
     <p class="note" style="margin-top:0" id="slotnote">—</p>
@@ -147,6 +169,9 @@
   </footer>
 </div>
 
+<script src="ledger.js"></script>
+<script src="wallet.js"></script>
+<script src="tour.js"></script>
 <script src="sectors.js"></script>
 <script src="pnl.js"></script>
 <script>
@@ -188,6 +213,41 @@
     `<div class="cell"><div class="k">${k}</div>` +
     `<div class="v ${cls || ""}">${v}</div>` +
     `<div class="n">${n || ""}</div></div>`;
+
+  async function paintLedger(me) {
+    const box = $("ledger");
+    try {
+      const l = await window.WSLedger.forOwner(me);
+      if (!l.rows.length) {
+        box.innerHTML = '<p class="note">Nothing yet — hiring a desk is the first deposit.</p>';
+        return;
+      }
+      const money = (n) => (n < 0 ? "−$" : "$") + Math.abs(n).toLocaleString(undefined,
+        { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const label = { hire: "Hired a desk", deposit: "Deposited",
+                      withdrawal: "Withdrew", distribution: "Took shares out" };
+      box.innerHTML =
+        '<div class="figs">' +
+          '<div class="fig"><div class="k">Deposited</div><div class="v">' + money(l.depositsUsd) + '</div></div>' +
+          '<div class="fig"><div class="k">Withdrawn</div><div class="v">' + money(l.withdrawnUsd) + '</div></div>' +
+          '<div class="fig"><div class="k">Net</div><div class="v ' + (l.netUsd >= 0 ? "up" : "down") +
+            '">' + money(l.netUsd) + '</div></div>' +
+        '</div>' +
+        l.rows.slice(0, 40).map((r) => {
+          const into = r.kind === "hire" || r.kind === "deposit";
+          const amt = r.usd === null ? r.qty.toFixed(4) + " $" + r.symbol : money(r.usd);
+          return '<div class="r">' +
+            '<span class="what ' + (into ? "in" : "out") + '">' + label[r.kind] + '</span>' +
+            '<span class="mid">desk ' + r.vault.slice(0, 10) + '…' +
+              (r.hash ? ' · <a href="' + window.WS.explorer + '/tx/' + r.hash + '" target="_blank" rel="noopener">tx</a>' : "") +
+            '</span>' +
+            '<span class="amt">' + (into ? "−" : "+") + amt.replace(/^[−-]/, "") + '</span>' +
+          '</div>';
+        }).join("");
+    } catch (e) {
+      box.innerHTML = '<p class="note">Could not read the ledger just now.</p>';
+    }
+  }
 
   async function show(me) {
     st("Reading your desks from chain…");
@@ -314,8 +374,14 @@
       c.textContent = "Some of these desks traded further back than the node would serve logs for, " +
         "so their figures are a floor rather than a full history.";
     }
+    /* The header connects now. A second Connect button beside a profile that
+       has already loaded only invites a pointless click. The lookup stays,
+       because looking at somebody else's desks is a real thing to want. */
+    $("connect").hidden = true;
+    $("readonly").textContent = "Look up another address";
     $("profile").hidden = false;
     st("");
+    paintLedger(me);
   }
 
   $("connect").addEventListener("click", async () => {
@@ -336,6 +402,12 @@
     if (!/^0x[0-9a-fA-F]{40}$/.test(a.trim())) return st("That is not an address.", "err");
     history.replaceState(null, "", "?a=" + a.trim());
     try { await show(a.trim().toLowerCase()); } catch (e) { st(e.message, "err"); }
+  });
+
+  if (window.WSWallet) window.WSWallet.onChange((a) => {
+    const looking = new URLSearchParams(location.search).get("a");
+    if (!a || (looking && looking.toLowerCase() !== a)) return;
+    show(a).catch(() => {});
   });
 
   (async () => {

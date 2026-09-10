@@ -168,12 +168,14 @@
     <h2>Commission it</h2>
     <p class="hint">Two transactions: one to approve the USDG, one to open the desk.</p>
     <div class="row">
-      <button id="go" type="button" disabled>Connect wallet &amp; commission</button>
+      <button id="go" type="button" disabled>Hire the desk</button>
     </div>
     <p class="status" id="status"></p>
   </div>
 </div>
 
+<script src="wallet.js"></script>
+<script src="tour.js"></script>
 <script src="sectors.js"></script>
 <script type="module">
 import { addressOf } from "./vendor/keygen.js";
@@ -298,6 +300,8 @@ const amountRaw = () => {
 
 function refresh() {
   $("go").disabled = !(mandate > 0 && key && amountRaw() > 0n && window.WS.factory);
+  const w = window.WSWallet;
+  $("go").textContent = w && w.address ? "Hire the desk" : "Connect wallet & hire the desk";
   if (!window.WS.factory) st("The floor has not been deployed yet — set WS.factory in sectors.js.", "err");
 }
 $("amt").addEventListener("input", refresh);
@@ -306,8 +310,8 @@ $("go").addEventListener("click", async () => {
   const eth = window.ethereum;
   if (!eth) return st("No wallet found. Install a browser wallet and reload.", "err");
   try {
-    st("Connecting…");
-    const [from] = await eth.request({ method: "eth_requestAccounts" });
+    const from = await window.WSWallet.require();
+    if (!from) return st("Connect a wallet to hire a desk.", "err");
     const want = "0x" + window.WS.chainId.toString(16);
     if (await eth.request({ method: "eth_chainId" }) !== want) {
       st("Switching network…");
@@ -335,6 +339,7 @@ $("go").addEventListener("click", async () => {
 });
 
 refresh();
+if (window.WSWallet) window.WSWallet.onChange(refresh);
 </script>
 
 <script>
