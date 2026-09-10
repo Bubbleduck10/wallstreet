@@ -59,6 +59,51 @@
   .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 14px; }
   .status { font-size: 13.5px; color: var(--ink-soft); margin-top: 12px; min-height: 20px; }
   .status.err { color: var(--bad); } .status.ok { color: var(--accent); font-weight: 600; }
+  /* criteria, run control, log, chat */
+  .opts { display: grid; gap: 16px; margin-top: 4px; }
+  .opt .lab { font: 11px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase;
+              color: var(--ink-faint); margin-bottom: 8px; }
+  .seg { display: flex; gap: 6px; flex-wrap: wrap; }
+  .seg button { height: 36px; padding: 0 14px; font: 500 13px/1 var(--serif); border-radius: 7px;
+                border: 1px solid var(--line-2); background: var(--field); color: var(--ink-soft);
+                cursor: pointer; font-weight: 500; }
+  .seg button[aria-pressed="true"] { background: var(--desk); color: #23282e;
+                                     border-color: var(--desk); font-weight: 600; }
+  .opt .hint { font-size: 12.5px; color: var(--ink-soft); margin-top: 7px; }
+
+  .runbar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-top: 18px;
+            padding-top: 16px; border-top: 1px solid var(--line); }
+  .pulse { width: 9px; height: 9px; border-radius: 50%; background: var(--ink-faint); flex: none; }
+  .pulse.on { background: var(--accent); animation: beat 2s ease-in-out infinite; }
+  @keyframes beat { 0%,100% { opacity: 1 } 50% { opacity: .35 } }
+  @media (prefers-reduced-motion: reduce) { .pulse.on { animation: none } }
+  .runstate { font: 12.5px/1.4 var(--mono); color: var(--ink-soft); }
+
+  .log { margin-top: 16px; border: 1px solid var(--line); border-radius: 9px;
+         background: var(--field); max-height: 300px; overflow-y: auto; }
+  .log .e { padding: 12px 15px; border-bottom: 1px solid var(--line); font-size: 13.5px;
+            line-height: 1.5; }
+  .log .e:last-child { border-bottom: 0; }
+  .log .e .when { font: 11px/1 var(--mono); color: var(--ink-faint); }
+  .log .e .act { font-weight: 600; margin: 0 0 3px; }
+  .log .e .act.buy { color: var(--gain); } .log .e .act.sell { color: var(--loss); }
+  .log .e .act.hold { color: var(--ink-soft); font-weight: 500; }
+  .log .e p { margin: 3px 0 0; color: var(--ink-soft); }
+  .log .e a { color: var(--accent); font-size: 12px; }
+
+  .chat { margin-top: 14px; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+  .msgs { max-height: 320px; overflow-y: auto; padding: 6px; background: var(--field); }
+  .msg { padding: 10px 13px; border-radius: 9px; margin: 6px; font-size: 14px; line-height: 1.55;
+         max-width: 82%; white-space: pre-wrap; }
+  .msg.you { background: var(--desk); color: #23282e; margin-left: auto; }
+  .msg.agent { background: var(--panel); border: 1px solid var(--line); }
+  .msg.err { background: transparent; color: var(--bad); border: 1px solid var(--line); }
+  .askrow { display: flex; gap: 8px; padding: 10px; border-top: 1px solid var(--line); }
+  .askrow input { flex: 1; height: 42px; padding: 0 13px; font: 14px/1 inherit;
+                  border: 1px solid var(--line); border-radius: 8px;
+                  background: var(--paper); color: var(--ink); }
+  .askrow input:focus { outline: 0; border-color: var(--carpet); }
+
   .keybox { margin-top: 14px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
   .keyrow { display: flex; justify-content: space-between; gap: 12px; padding: 11px 13px;
             border-bottom: 1px solid var(--line); font: 12.5px/1.4 var(--mono); word-break: break-all; }
@@ -158,6 +203,73 @@
   </div>
 
   <div class="panel">
+    <h2>How it should trade</h2>
+    <p class="note" style="margin-top:0">Your agent decides on its own. These are the terms it
+    works inside — change them any time and the next decision uses them.</p>
+
+    <div class="opts">
+      <div class="opt">
+        <div class="lab">Risk</div>
+        <div class="seg" id="segRisk">
+          <button type="button" data-v="careful">Careful</button>
+          <button type="button" data-v="balanced">Balanced</button>
+          <button type="button" data-v="bold">Bold</button>
+        </div>
+        <p class="hint" id="riskHint"></p>
+      </div>
+      <div class="opt">
+        <div class="lab">Style</div>
+        <div class="seg" id="segStyle">
+          <button type="button" data-v="momentum">Follow strength</button>
+          <button type="button" data-v="reversion">Buy weakness</button>
+          <button type="button" data-v="spread">Spread evenly</button>
+        </div>
+        <p class="hint" id="styleHint"></p>
+      </div>
+      <div class="opt">
+        <div class="lab">How often it looks</div>
+        <div class="seg" id="segPace">
+          <button type="button" data-v="slow">Every 30 min</button>
+          <button type="button" data-v="steady">Every 10 min</button>
+          <button type="button" data-v="quick">Every 3 min</button>
+        </div>
+        <p class="hint">It only acts when it has a reason. Looking more often is not trading more often.</p>
+      </div>
+      <div class="opt">
+        <div class="lab">Most names at once</div>
+        <div class="seg" id="segNames">
+          <button type="button" data-v="1">1</button>
+          <button type="button" data-v="2">2</button>
+          <button type="button" data-v="3">3</button>
+        </div>
+        <p class="hint" id="namesHint"></p>
+      </div>
+    </div>
+
+    <div class="runbar">
+      <button id="runBtn" type="button">Start trading</button>
+      <span class="pulse" id="pulse"></span>
+      <span class="runstate" id="runState">Not running.</span>
+    </div>
+    <p class="note" id="runNote"></p>
+
+    <div class="log" id="log" hidden></div>
+  </div>
+
+  <div class="panel">
+    <h2>Ask your agent</h2>
+    <p class="note" style="margin-top:0">It can see this desk — the book, the mandate, every
+    decision it has made. Ask it why, or tell it when you disagree.</p>
+    <div class="chat">
+      <div class="msgs" id="msgs"></div>
+      <div class="askrow">
+        <input id="ask" type="text" placeholder="Why did you buy that?" autocomplete="off">
+        <button id="askBtn" type="button">Ask</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
     <h2>Running it</h2>
     <p class="note">The agent key was generated when this desk was hired and is held by whoever
     hired it. Point the runner at this vault with that key:</p>
@@ -179,6 +291,7 @@
 
 <script src="sectors.js"></script>
 <script src="pnl.js"></script>
+<script src="agent.js"></script>
 <script>
 (() => {
   const $ = (id) => document.getElementById(id);
@@ -432,6 +545,183 @@
     try { await navigator.clipboard.writeText(recovered); kn("Copied."); }
     catch { kn("Could not copy — select the key above instead.", "err"); }
   });
+
+
+  /* ---- the agent: criteria, the loop, the log, the conversation ---- */
+  const A = window.WSAgent;
+  const RISK_HINT = {
+    careful:  "Small positions, cut at 4%, take at 6%. Trades less and loses less when wrong.",
+    balanced: "A quarter of the book per name, cut at 6%, take at 10%.",
+    bold:     "Large positions, cut at 10%, take at 18%. Fewer, bigger swings.",
+  };
+  const STYLE_HINT = {
+    momentum:  "Buys what is already moving up on your mandate.",
+    reversion: "Buys what has fallen, on the view that it comes back. It often does not.",
+    spread:    "Ignores price moves and holds the deepest names, which is the dullest and safest.",
+  };
+
+  let cfg = A.loadCfg(vault);
+  let timer = null, running = false, busy = false, nextAt = 0;
+  const chatHistory = [];
+
+  const paintSeg = (id, value) => {
+    for (const b of $(id).querySelectorAll("button"))
+      b.setAttribute("aria-pressed", String(b.dataset.v === String(value)));
+  };
+  const paintCfg = () => {
+    paintSeg("segRisk", cfg.risk);
+    paintSeg("segStyle", cfg.style);
+    paintSeg("segPace", cfg.pace);
+    paintSeg("segNames", cfg.maxNames);
+    $("riskHint").textContent = RISK_HINT[cfg.risk] || "";
+    $("styleHint").textContent = STYLE_HINT[cfg.style] || "";
+    $("namesHint").textContent = "Your desk allows up to " + (window.__limit || 3) +
+      ". Holding fewer means bigger positions in each.";
+  };
+  const setCfg = (k, v) => {
+    cfg = { ...A.loadCfg(vault), [k]: v };
+    A.saveCfg(vault, cfg);
+    paintCfg();
+    if (running) schedule(0);
+  };
+  for (const [id, key, cast] of [["segRisk","risk",String],["segStyle","style",String],
+                                 ["segPace","pace",String],["segNames","maxNames",Number]]) {
+    $(id).addEventListener("click", (e) => {
+      const b = e.target.closest("button[data-v]");
+      if (b) setCfg(key, cast(b.dataset.v));
+    });
+  }
+
+  const paintLog = () => {
+    const l = A.readLog(vault);
+    if (!l.length) { $("log").hidden = true; return; }
+    $("log").hidden = false;
+    $("log").innerHTML = [...l].reverse().slice(0, 40).map((e) => {
+      const cls = e.kind === "open" ? "buy" : e.kind === "close" ? "sell" : "hold";
+      const head = e.kind === "open" ? "Bought " + e.symbol
+                 : e.kind === "close" ? "Sold " + e.symbol
+                 : "Held";
+      const when = new Date(e.t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      return '<div class="e"><div class="when">' + when + '</div>' +
+        '<div class="act ' + cls + '">' + head + '</div>' +
+        '<p>' + (e.why || "") + '</p>' +
+        (e.hash ? '<a href="' + window.WS.explorer + '/tx/' + e.hash + '" target="_blank" rel="noopener">view transaction ›</a>' : "") +
+        '</div>';
+    }).join("");
+  };
+
+  const runState = (m) => { $("runState").textContent = m; };
+  const runNote = (m, cls) => { const e = $("runNote"); e.textContent = m || ""; e.className = "note " + (cls || ""); };
+
+  /* The key: already in this browser from the mint, or recovered by signing. */
+  async function agentKey() {
+    if (!owner) throw new Error("Still reading this desk.");
+    const stored = (() => { try { return localStorage.getItem("ws.agent." + owner.toLowerCase()); } catch { return null; } })();
+    if (stored) {
+      const { addressOf } = await import("./vendor/keygen.js");
+      const onchain = addrOf(word(await call(vault, SEL.agent), 0));
+      if (addressOf(stored).toLowerCase() === onchain.toLowerCase()) return stored;
+    }
+    throw new Error("no-key");
+  }
+
+  const schedule = (ms) => {
+    clearTimeout(timer);
+    nextAt = Date.now() + ms;
+    timer = setTimeout(cycle, ms);
+  };
+
+  async function cycle() {
+    if (!running || busy) return;
+    busy = true;
+    try {
+      const priv = await agentKey();
+      const signer = await import("./vendor/signer.js");
+      runState("Thinking…");
+      await A.tick(vault, priv, signer, (ev) => {
+        if (ev.kind === "think") runState(ev.why);
+        if (ev.kind === "acting") runState("Sending — " + ev.human);
+        if (ev.kind === "sent") runState("Sent. " + ev.human);
+      });
+      paintLog();
+      await load();
+    } catch (e) {
+      if (e.message === "no-key") {
+        running = false;
+        $("pulse").className = "pulse";
+        $("runBtn").textContent = "Start trading";
+        runNote("This browser does not have the agent key. Recover it below — sign the same " +
+                "message you signed when you hired the desk — then start again.", "err");
+        busy = false;
+        return;
+      }
+      runNote(e.message || "Something went wrong this cycle.", "err");
+    } finally {
+      busy = false;
+      if (running) {
+        const gap = A.PACE[cfg.pace] || A.PACE.steady;
+        schedule(gap);
+      }
+    }
+  }
+
+  setInterval(() => {
+    if (!running || busy) return;
+    const left = Math.max(0, Math.round((nextAt - Date.now()) / 1000));
+    if (left > 0) runState("Watching. Next look in " + (left > 60 ? Math.ceil(left / 60) + " min" : left + "s") + ".");
+  }, 1000);
+
+  $("runBtn").addEventListener("click", async () => {
+    running = !running;
+    if (running) {
+      $("runBtn").textContent = "Stop";
+      $("pulse").className = "pulse on";
+      runNote("Trading while this tab is open. Close it and the agent stops — nothing keeps " +
+              "running on a server, and nobody else holds your key.");
+      cycle();
+    } else {
+      clearTimeout(timer);
+      $("runBtn").textContent = "Start trading";
+      $("pulse").className = "pulse";
+      runState("Stopped.");
+      runNote("");
+    }
+  });
+
+  /* ---- the conversation ---- */
+  const say = (role, text) => {
+    const d = document.createElement("div");
+    d.className = "msg " + role;
+    d.textContent = text;
+    $("msgs").appendChild(d);
+    $("msgs").scrollTop = $("msgs").scrollHeight;
+    return d;
+  };
+
+  async function askAgent() {
+    const q = $("ask").value.trim();
+    if (!q) return;
+    $("ask").value = "";
+    say("you", q);
+    const thinking = say("agent", "…");
+    $("askBtn").disabled = true;
+    try {
+      const answer = await A.ask(vault, q, chatHistory);
+      thinking.textContent = answer;
+      chatHistory.push({ role: "you", text: q }, { role: "agent", text: answer });
+      while (chatHistory.length > 16) chatHistory.shift();
+    } catch (e) {
+      thinking.className = "msg err";
+      thinking.textContent = e.message || "Could not reach your agent.";
+    } finally { $("askBtn").disabled = false; }
+  }
+  $("askBtn").addEventListener("click", askAgent);
+  $("ask").addEventListener("keydown", (e) => { if (e.key === "Enter") askAgent(); });
+
+  paintCfg();
+  paintLog();
+  if (!window.WS.brain) runNote("No agent brain is configured for this site yet, so decisions " +
+    "fall back to a plain rules engine.", "err");
 
   load().catch((e) => st("Could not read this desk: " + e.message, "err"));
 })();
