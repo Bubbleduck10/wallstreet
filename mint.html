@@ -141,28 +141,26 @@
   </div>
 
   <div class="step">
-    <div class="n">Step 3 — the key</div>
-    <h2>Your agent&rsquo;s key</h2>
-    <p class="hint">Generated here, in this page, and never sent anywhere. It is what lets your
-    agent trade — you hold it, we never see it.</p>
-    <div class="row"><button class="ghost" id="gen" type="button">Generate a key</button></div>
+    <div class="n">Step 3 — the agent</div>
+    <h2>Sign once to create it</h2>
+    <p class="hint">Your agent needs a key of its own so it can trade without being able to
+    withdraw. Rather than making you save one, it is <b>derived from a signature</b> — sign the
+    message and the same key comes back every time, on any machine. There is nothing to write
+    down and nothing to lose.</p>
+    <div class="row"><button class="ghost" id="gen" type="button">Sign to create the agent</button></div>
     <div class="keybox" id="keybox" hidden>
-      <div class="keyrow"><span class="k">address</span><span id="kaddr"></span></div>
-      <div class="keyrow"><span class="k">private key</span><span id="kpriv"></span></div>
+      <div class="keyrow"><span class="k">agent</span><span id="kaddr"></span></div>
+      <div class="keyrow"><span class="k">key</span><span id="kpriv">in this browser · re-derivable any time</span></div>
     </div>
     <div class="warnbox" id="keywarn" hidden>
-      <b>Save this now.</b> It is shown once. Losing it costs the ability to trade, not the
-      money — your funds stay withdrawable whatever happens to this key. Anyone who has it can
-      trade your desk within its mandate, and cannot do anything else with it.
+      <b>Nothing to write down.</b> Sign the same message again — here or on your desk page — and
+      this key comes back. Anyone holding it can trade your desk inside its mandate and can do
+      nothing else with it; your money stays withdrawable by you whatever happens to it.
     </div>
     <div class="row" id="keyacts" hidden>
       <button class="ghost" id="dl" type="button">Download agent.key</button>
-      <button class="ghost" id="copy" type="button">Copy</button>
+      <button class="ghost" id="copy" type="button">Copy key</button>
     </div>
-    <label class="ack" id="ackrow" hidden>
-      <input type="checkbox" id="ack">
-      <span>I have saved the private key somewhere I will still have it tomorrow.</span>
-    </label>
   </div>
 
   <div class="step">
@@ -178,7 +176,7 @@
 
 <script src="sectors.js"></script>
 <script type="module">
-import { generateAgent } from "./vendor/keygen.js";
+import { addressOf } from "./vendor/keygen.js";
 
 const $ = (id) => document.getElementById(id);
 const st = (m, k) => { const e = $("status"); e.textContent = m; e.className = "status " + (k || ""); };
@@ -212,17 +210,62 @@ grid.addEventListener("change", () => {
 });
 
 /* ---- key ---- */
+/* The agent key is derived from a signature rather than generated, so there is
+   nothing for the owner to save. Signing the same message always yields the
+   same key, which makes it recoverable on any machine at any time.
+
+   The message is domain-bound and versioned: a signature made here cannot be
+   replayed to derive the same key on another site, and if the derivation ever
+   has to change, v2 leaves v1 keys alone. */
+const AGENT_MESSAGE = (owner) =>
+  "WallStreet agent key v1\n\n" +
+  "Signing this creates the trading key for your desks on wallstreetrh.xyz.\n" +
+  "It can trade inside a mandate you set. It can never withdraw.\n\n" +
+  "Owner: " + owner.toLowerCase();
+
+/* SHA-256 of the signature, reduced into the curve order. A hash landing
+   outside it is about a 2^-128 event, but the loop costs nothing and a silently
+   invalid key would be very hard to diagnose. */
+const CURVE_N = BigInt("0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141");
+const deriveKey = async (signature) => {
+  let bytes = new TextEncoder().encode(signature);
+  for (let i = 0; i < 8; i++) {
+    const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+    const hex = [...digest].map((x) => x.toString(16).padStart(2, "0")).join("");
+    const k = BigInt("0x" + hex);
+    if (k > 0n && k < CURVE_N) return "0x" + hex;
+    bytes = digest;
+  }
+  throw new Error("could not derive a key");
+};
+
 let key = null;
-$("gen").addEventListener("click", () => {
-  key = generateAgent();
-  $("kaddr").textContent = key.address;
-  $("kpriv").textContent = key.privateKey;
-  for (const id of ["keybox", "keywarn", "keyacts", "ackrow"]) $(id).hidden = false;
-  $("gen").textContent = "Generate a different key";
-  $("ack").checked = false;
-  refresh();
+$("gen").addEventListener("click", async () => {
+  if (!window.ethereum) return st("No wallet found in this browser.", "err");
+  const btn = $("gen");
+  btn.disabled = true;
+  try {
+    const [from] = await window.ethereum.request({ method: "eth_requestAccounts" });
+    if (!from) throw new Error("No account");
+    st("Confirm the signature in your wallet…");
+    const sig = await window.ethereum.request({
+      method: "personal_sign", params: [AGENT_MESSAGE(from), from],
+    });
+    const privateKey = await deriveKey(sig);
+    key = { privateKey, address: addressOf(privateKey) };
+    // kept locally so the runner can be set up without signing again; the
+    // signature remains the source of truth, this is only a convenience
+    try { localStorage.setItem("ws.agent." + from.toLowerCase(), privateKey); } catch {}
+    $("kaddr").textContent = key.address;
+    $("kpriv").textContent = "in this browser · re-derivable any time";
+    for (const id of ["keybox", "keywarn", "keyacts"]) $(id).hidden = false;
+    btn.textContent = "Sign again";
+    st("");
+    refresh();
+  } catch (e) {
+    st((e && (e.message || String(e))) || "Could not sign.", "err");
+  } finally { btn.disabled = false; }
 });
-$("ack").addEventListener("change", refresh);
 $("dl").addEventListener("click", () => {
   // A plain file, because the runner reads a plain file. No wrapper, no JSON,
   // nothing to unwrap later at the moment somebody is already stressed.
@@ -254,7 +297,7 @@ const amountRaw = () => {
 };
 
 function refresh() {
-  $("go").disabled = !(mandate > 0 && key && $("ack").checked && amountRaw() > 0n && window.WS.factory);
+  $("go").disabled = !(mandate > 0 && key && amountRaw() > 0n && window.WS.factory);
   if (!window.WS.factory) st("The floor has not been deployed yet — set WS.factory in sectors.js.", "err");
 }
 $("amt").addEventListener("input", refresh);

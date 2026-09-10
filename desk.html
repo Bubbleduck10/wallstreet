@@ -59,6 +59,11 @@
   .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 14px; }
   .status { font-size: 13.5px; color: var(--ink-soft); margin-top: 12px; min-height: 20px; }
   .status.err { color: var(--bad); } .status.ok { color: var(--accent); font-weight: 600; }
+  .keybox { margin-top: 14px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .keyrow { display: flex; justify-content: space-between; gap: 12px; padding: 11px 13px;
+            border-bottom: 1px solid var(--line); font: 12.5px/1.4 var(--mono); word-break: break-all; }
+  .keyrow:last-child { border-bottom: 0; }
+  .keyrow .k { color: var(--ink-faint); flex: none; }
   .note { font-size: 13.5px; color: var(--ink-soft); margin-top: 10px; }
 
   .pnlband{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
@@ -156,6 +161,18 @@
     <h2>Running it</h2>
     <p class="note">The agent key was generated when this desk was hired and is held by whoever
     hired it. Point the runner at this vault with that key:</p>
+    <div class="row">
+      <button class="ghost" id="recover" type="button">Recover the agent key</button>
+    </div>
+    <div class="keybox" id="kbox" hidden>
+      <div class="keyrow"><span class="k">agent</span><span id="kagent"></span></div>
+      <div class="keyrow"><span class="k">key</span><span id="kkey"></span></div>
+    </div>
+    <div class="row" id="kacts" hidden>
+      <button class="ghost" id="kdl" type="button">Download agent.key</button>
+      <button class="ghost" id="kcopy" type="button">Copy</button>
+    </div>
+    <p class="note" id="knote"></p>
     <p class="addr" style="margin-top:10px" id="cmd">node agent/runner.mjs --vault … --strategy ./my-strategy.mjs --dry</p>
   </div>
 </div>
@@ -335,6 +352,85 @@
       for (const h of held) await send(SEL.withdrawAll + pad(h.address), "Withdrew $" + h.symbol);
     }
     await send(SEL.withdrawAll + pad(window.WS.usdg), "Cash withdrawn");
+  });
+
+
+  /* Recovery, not storage: the key is a function of the owner's signature, so
+     signing the same message returns it on any machine. Checked against the
+     vault before it is shown — some wallets sign non-deterministically, and a
+     key that does not match this desk is worse than no key at all. */
+  const AGENT_MESSAGE = (o) =>
+    "WallStreet agent key v1\n\n" +
+    "Signing this creates the trading key for your desks on wallstreetrh.xyz.\n" +
+    "It can trade inside a mandate you set. It can never withdraw.\n\n" +
+    "Owner: " + o.toLowerCase();
+
+  const CURVE_N = BigInt("0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141");
+  const deriveKey = async (sig) => {
+    let bytes = new TextEncoder().encode(sig);
+    for (let i = 0; i < 8; i++) {
+      const d = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+      const hex = [...d].map((x) => x.toString(16).padStart(2, "0")).join("");
+      const k = BigInt("0x" + hex);
+      if (k > 0n && k < CURVE_N) return "0x" + hex;
+      bytes = d;
+    }
+    throw new Error("could not derive a key");
+  };
+
+  let recovered = null;
+  const kn = (m, cls) => { const e = $("knote"); e.textContent = m || ""; e.className = "note " + (cls || ""); };
+
+  $("recover").addEventListener("click", async () => {
+    if (!window.ethereum) return kn("No wallet found in this browser.", "err");
+    const btn = $("recover");
+    btn.disabled = true;
+    try {
+      const [from] = await window.ethereum.request({ method: "eth_requestAccounts" });
+      if (!from) throw new Error("No account");
+      if (owner && from.toLowerCase() !== owner.toLowerCase()) {
+        kn("This desk belongs to " + owner.slice(0, 10) + "… — its key comes from that wallet's signature.", "err");
+        return;
+      }
+      kn("Confirm the signature in your wallet…");
+      const sig = await window.ethereum.request({
+        method: "personal_sign", params: [AGENT_MESSAGE(from), from],
+      });
+      const priv = await deriveKey(sig);
+      const { addressOf } = await import("./vendor/keygen.js");
+      const addr = addressOf(priv);
+
+      const onchain = addrOf(word(await call(vault, SEL.agent), 0));
+      if (addr.toLowerCase() !== onchain.toLowerCase()) {
+        kn("That signature derives " + addr.slice(0, 10) + "…, but this desk's agent is " +
+           onchain.slice(0, 10) + "…. Your wallet may be signing non-deterministically, " +
+           "or the desk was created with a different key.", "err");
+        return;
+      }
+      recovered = priv;
+      $("kagent").textContent = addr;
+      $("kkey").textContent = priv;
+      $("kbox").hidden = false;
+      $("kacts").hidden = false;
+      kn("Matches this desk's agent on chain. Nothing was stored to get this — sign again any time.");
+    } catch (e) {
+      kn((e && (e.message || String(e))) || "Could not recover.", "err");
+    } finally { btn.disabled = false; }
+  });
+
+  $("kdl").addEventListener("click", () => {
+    if (!recovered) return;
+    const blob = new Blob([recovered + "\n"], { type: "text/plain" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "agent.key";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+  $("kcopy").addEventListener("click", async () => {
+    if (!recovered) return;
+    try { await navigator.clipboard.writeText(recovered); kn("Copied."); }
+    catch { kn("Could not copy — select the key above instead.", "err"); }
   });
 
   load().catch((e) => st("Could not read this desk: " + e.message, "err"));
