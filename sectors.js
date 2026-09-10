@@ -10,7 +10,7 @@ window.WS = {
   chainId: 4663,
   // The agent brain — a Worker holding the Anthropic key, so nobody using the
   // site needs one. Empty means decisions fall back to a plain rules engine.
-  brain: "",
+  brain: "https://wallstreet-agent.notejet.workers.dev",
   rpc: "https://rpc.mainnet.chain.robinhood.com",
   explorer: "https://robinhoodchain.blockscout.com",
 };

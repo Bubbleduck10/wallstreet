@@ -344,6 +344,16 @@
       });
       const j = await r.json();
       if (j.rateLimited) return { action: null, why: j.why, source: "limit" };
+      /* An error is a JSON body with a 4xx or 5xx, not a thrown exception, so
+         it would otherwise reach validate() as a decision with no action and
+         be reported as "nothing to do this cycle" — a desk sitting silent
+         forever while something is plainly broken. */
+      if (!r.ok || j.error) {
+        const local = decideLocally(desk, hist, cfg, limit);
+        return { ...local, source: "rules",
+          why: local.why + " (The brain answered “" + (j.error || r.status) +
+               "”, so this was decided locally.)" };
+      }
       const checked = validate(j, desk, cfg, limit);
       return { ...checked, source: "brain", confidence: j.confidence };
     } catch (e) {
