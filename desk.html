@@ -6,12 +6,12 @@
 <link rel="icon" href="brand/favicon-64.png?v=1" sizes="64x64" type="image/png">
 <link rel="icon" href="brand/favicon-32.png?v=1" sizes="32x32" type="image/png">
 <link rel="apple-touch-icon" href="brand/favicon-180.png?v=1">
-<meta property="og:title" content="WallStreet — a desk">
+<meta property="og:title" content="Brokers — a desk">
 <meta property="og:description" content="One desk: its book, its mandate, its positions, and the withdraw only its owner can call.">
 <meta property="og:image" content="https://wallstreetrh.xyz/brand/og.png?v=1">
 <meta property="og:type" content="website">
 <meta name="twitter:card" content="summary_large_image">
-<title>WallStreet — a desk</title>
+<title>Brokers — a desk</title>
 <style>
   :root {
     /* Louder than the floor's palette on purpose. The desk is the page people
@@ -226,7 +226,7 @@
 </head>
 <body>
 <div class="topbar"><div class="in">
-  <a class="mark" href="./">Wall<em>Street</em></a>
+  <a class="mark" href="./">Brok<em>ers</em></a>
   <nav>
     <a href="./floor.html">The floor</a>
     <a href="./leaderboard.html">Leaderboard</a>
@@ -349,7 +349,7 @@
       <input type="checkbox" id="keep">
       <span>
         <b>Keep trading when I close the tab</b>
-        <span class="sub" id="keepnote">Your desk's trading key is copied to WallStreet's server so it
+        <span class="sub" id="keepnote">Your desk's trading key is copied to Brokers's server so it
         can keep working while you are away. It still cannot withdraw — only you can — and you can
         stop and forget it at any time.</span>
       </span>
@@ -606,7 +606,7 @@
      vault before it is shown — some wallets sign non-deterministically, and a
      key that does not match this desk is worse than no key at all. */
   const AGENT_MESSAGE = (o) =>
-    "WallStreet agent key v1\n\n" +
+    "Brokers agent key v1\n\n" +
     "Signing this creates the trading key for your desks on wallstreetrh.xyz.\n" +
     "It can trade inside a mandate you set. It can never withdraw.\n\n" +
     "Owner: " + o.toLowerCase();
@@ -1146,8 +1146,8 @@
   let kept = false;
 
   const keeperMessage = (v, ts) =>
-    "WallStreet keeper v1\n\n" +
-    "Let WallStreet's server keep trading this desk while your browser is closed.\n" +
+    "Brokers keeper v1\n\n" +
+    "Let Brokers's server keep trading this desk while your browser is closed.\n" +
     "It holds only the desk's trading key. It can never withdraw — only you can.\n\n" +
     "Desk: " + v.toLowerCase() + "\n" +
     "Time: " + ts;
@@ -1169,7 +1169,7 @@
     $("keep").checked = kept;
     $("keeprow").classList.toggle("on", kept);
     if (!kept) {
-      keepNote("Your desk's trading key is copied to WallStreet's server so it can keep working " +
+      keepNote("Your desk's trading key is copied to Brokers's server so it can keep working " +
                "while you are away. It still cannot withdraw — only you can — and you can stop " +
                "and forget it at any time.");
       return;
