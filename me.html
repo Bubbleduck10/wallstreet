@@ -409,9 +409,9 @@
     $("slots").innerHTML = Array.from({ length: 8 }, (_, i) =>
       `<i class="${i < limit ? "on" : ""}"></i>`).join("");
     $("slotnote").textContent = limit <= 3
-      ? "Three per desk. $WALLSTREET is not launched yet, so every owner has the base limit — "
+      ? "Three per desk. $BROKERS is not launched yet, so every owner has the base limit — "
         + "holding it will add one slot per 250,000, to a maximum of eight."
-      : limit + " per desk, from the $WALLSTREET you hold. Move the tokens and the slots move too.";
+      : limit + " per desk, from the $BROKERS you hold. Move the tokens and the slots move too.";
 
     $("desks").innerHTML =
       '<table><tr><th>Desk</th><th>Mandate</th><th class="num">Funded</th>' +

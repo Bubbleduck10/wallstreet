@@ -5,6 +5,10 @@ window.TOKENS = [{"symbol":"NVDA","address":"0xd0601ce157db5bdc3162bbac2a2c8af53
 
 window.WS = {
   factory: "0x93e624d5acad5735255e2734e75730959dd61847",   // set this after deploying the floor
+  // The project token. Shown on the site; not wired into the floor, whose
+  // `wallstreet` address is immutable and still the zero address.
+  token: "0xca20724e7f338d6ab5984700a96be15d20210448",
+  ticker: "BROKERS",
   usdg: "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
   usdgDecimals: 6,
   chainId: 4663,

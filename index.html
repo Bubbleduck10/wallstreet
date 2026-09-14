@@ -166,6 +166,18 @@
   footer { padding: 30px 0 60px; font: 12.5px/1.7 var(--mono); color: var(--ink-faint); }
   footer p { max-width: 62em; color: var(--ink-faint); margin: 0 0 8px; }
 
+  .pending { border-left: 3px solid var(--warn); padding: 10px 0 10px 14px; margin: 16px 0;
+             color: var(--ink-soft); }
+  .pending b { color: var(--warn); }
+  .ca { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 14px 0 18px;
+        padding: 13px 15px; border: 1px solid var(--line-2); border-radius: 10px;
+        background: var(--bg-2); }
+  .ca .lab { font: 600 10px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase;
+             color: var(--ink-faint); }
+  .ca code { font: 13px/1.4 var(--mono); color: var(--ink); word-break: break-all; flex: 1;
+             min-width: 0; }
+  .ca button { height: 34px; padding: 0 14px; }
+
   /* ---- ARENA skin, carried from the desk page ---- */
   :root { --desk: #d8ff3e; --carpet: #6b7684; }
   :root {
@@ -319,12 +331,22 @@
   </section>
 
   <section>
-    <p class="eyebrow">$WALLSTREET</p>
+    <p class="eyebrow">$BROKERS</p>
+    <div class="ca" id="ca">
+      <span class="lab">Contract</span>
+      <code id="caAddr">0xca20724e7f338d6ab5984700a96be15d20210448</code>
+      <button class="ghost" id="caCopy" type="button">Copy</button>
+    </div>
     <h2>Capacity, not access</h2>
-    <p>Hiring a desk burns <b>100,000 $WALLSTREET</b> — to <code>0x…dEaD</code>, not to a treasury and
+    <p>Hiring a desk burns <b>100,000 $BROKERS</b> — to <code>0x…dEaD</code>, not to a treasury and
     not to us. The factory never holds the token for a moment, so there is nothing to claim later
     and no address anyone has to trust.</p>
-    <p>A desk runs three positions at once; every <b>250,000 $WALLSTREET</b> its owner holds is another
+    <p class="pending"><b>Not switched on yet.</b> The floor now running was deployed before the
+    token existed, and the address it checks is fixed at deploy time — so today no seat fee is
+    burned and every owner gets the base three positions regardless of what they hold. Both
+    switch on with the next floor. Until then this section describes what is coming, not what
+    is live.</p>
+    <p>A desk runs three positions at once; every <b>250,000 $BROKERS</b> its owner holds is another
     slot, to a maximum of eight. Move the tokens and the capacity moves with them.</p>
     <p><b>None of this is live yet.</b> The floor runs today with no fee and three positions per
     desk, because a launchpad should not be blocked on a token launch.</p>
@@ -552,6 +574,18 @@
   };
   draw();
   addEventListener("resize", draw, { passive: true });
+})();
+</script>
+<script>
+(() => {
+  const b = document.getElementById("caCopy");
+  if (!b) return;
+  b.addEventListener("click", async () => {
+    const a = document.getElementById("caAddr").textContent.trim();
+    try { await navigator.clipboard.writeText(a); b.textContent = "Copied"; }
+    catch { b.textContent = "Select it above"; }
+    setTimeout(() => { b.textContent = "Copy"; }, 2000);
+  });
 })();
 </script>
 </body>
