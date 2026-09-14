@@ -166,6 +166,21 @@
   footer { padding: 30px 0 60px; font: 12.5px/1.7 var(--mono); color: var(--ink-faint); }
   footer p { max-width: 62em; color: var(--ink-faint); margin: 0 0 8px; }
 
+  .burn { border: 1px solid var(--line-2); border-radius: 10px; background: var(--bg-2);
+          padding: 16px 18px; margin: 0 0 18px; }
+  .burn .b-fig { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .burn .k { font: 600 10px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase;
+             color: var(--ink-faint); }
+  .burn .v { font: 800 30px/1 var(--sans); letter-spacing: -.02em; color: var(--hot);
+             font-variant-numeric: tabular-nums; }
+  .burn .n { font: 12px/1 var(--mono); color: var(--ink-soft); }
+  .burn .b-bar { height: 6px; border-radius: 3px; background: var(--line); margin: 13px 0 11px;
+                 overflow: hidden; }
+  .burn .b-bar i { display: block; height: 100%; background: var(--hot); border-radius: 3px;
+                   transition: width .6s ease; }
+  .burn .b-note { font-size: 12.5px; color: var(--ink-faint); margin: 0; line-height: 1.6; }
+  .burn .b-note code { font-family: var(--mono); color: var(--ink-soft); }
+
   .pending { border-left: 3px solid var(--warn); padding: 10px 0 10px 14px; margin: 16px 0;
              color: var(--ink-soft); }
   .pending b { color: var(--warn); }
@@ -336,6 +351,17 @@
       <span class="lab">Contract</span>
       <code id="caAddr">0xca20724e7f338d6ab5984700a96be15d20210448</code>
       <button class="ghost" id="caCopy" type="button">Copy</button>
+    </div>
+    <div class="burn" id="burnBox">
+      <div class="b-fig">
+        <span class="k">Burned</span>
+        <span class="v" id="burnAmt">—</span>
+        <span class="n" id="burnPct">reading from chain…</span>
+      </div>
+      <div class="b-bar"><i id="burnBar" style="width:0%"></i></div>
+      <p class="b-note">Sent to <code>0x…dEaD</code>, which has no private key and never will.
+      Counted live from the token contract — <a id="burnLink" target="_blank" rel="noopener">check it
+      yourself</a>.</p>
     </div>
     <h2>Capacity, not access</h2>
     <p>Hiring a desk burns <b>100,000 $BROKERS</b> — to <code>0x…dEaD</code>, not to a treasury and
@@ -577,6 +603,46 @@
 })();
 </script>
 <script>
+/* balanceOf(0x…dEaD) against totalSupply. Two eth_calls, no library. If the
+   chain cannot be reached the box says so rather than showing a stale number
+   somebody might act on. */
+(() => {
+  const DEAD = "0x000000000000000000000000000000000000dEaD";
+  const pad = (a) => a.toLowerCase().replace(/^0x/, "").padStart(64, "0");
+  const big = (h) => BigInt(h && h !== "0x" ? h : "0x0");
+
+  const call = async (to, data) => {
+    const r = await fetch(window.WS.rpc, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_call",
+                             params: [{ to, data }, "latest"] }),
+    });
+    const j = await r.json();
+    if (j.error) throw new Error(j.error.message);
+    return j.result;
+  };
+
+  (async () => {
+    const link = document.getElementById("burnLink");
+    if (link) link.href = window.WS.explorer + "/token/" + window.WS.token;
+    try {
+      const [supRaw, deadRaw] = await Promise.all([
+        call(window.WS.token, "0x18160ddd"),
+        call(window.WS.token, "0x70a08231" + pad(DEAD)),
+      ]);
+      const sup = Number(big(supRaw)) / 1e18;
+      const dead = Number(big(deadRaw)) / 1e18;
+      const pct = sup > 0 ? (dead / sup) * 100 : 0;
+      document.getElementById("burnAmt").textContent = Math.round(dead).toLocaleString();
+      document.getElementById("burnPct").textContent =
+        pct.toFixed(2) + "% of " + Math.round(sup).toLocaleString() + " supply";
+      document.getElementById("burnBar").style.width = Math.min(100, pct) + "%";
+    } catch (e) {
+      document.getElementById("burnPct").textContent = "could not reach the chain just now";
+    }
+  })();
+})();
+
 (() => {
   const b = document.getElementById("caCopy");
   if (!b) return;
