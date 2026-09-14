@@ -51,6 +51,16 @@
   .back { display: inline-block; font-size: 13px; color: #9aa4ae; text-decoration: none;
           margin-bottom: 10px; }
   .back:hover { color: #e8e4dc; }
+
+  /* ---- ARENA skin: chrome only. The scene's palette is the artwork and is
+     read by the canvas through getComputedStyle, so none of it is touched. */
+  body { background: #0e1116; color: #eef2f6; }
+  h1 { font-weight: 800 !important; letter-spacing: -.02em; text-transform: uppercase; }
+  .back { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px !important;
+          letter-spacing: .12em; text-transform: uppercase; color: #6b7684 !important; }
+  .back:hover { color: #eef2f6 !important; }
+  .sub, .note { color: #99a5b3 !important; }
+  .note.demo { color: #d8ff3e !important; }
 </style>
 </head>
 <body>

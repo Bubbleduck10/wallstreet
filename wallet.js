@@ -25,34 +25,34 @@
   .wsw { position: relative; display: inline-flex; align-items: center; font-family:
          -apple-system, "Segoe UI", system-ui, sans-serif; }
   .wsw button { font: 500 13px/1 inherit; height: 34px; padding: 0 13px; border-radius: 7px;
-                cursor: pointer; border: 1px solid #3d474f; background: #262d35; color: #e8e4dc; }
-  .wsw button:hover { border-color: #55616c; }
+                cursor: pointer; border: 1px solid #313b47; background: #1c232c; color: #eef2f6; }
+  .wsw button:hover { border-color: #d8ff3e; }
   .wsw button:disabled { opacity: .5; cursor: not-allowed; }
   .wsw .pill { display: inline-flex; align-items: center; gap: 8px; }
   .wsw .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
   .wsw .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 12.5px; }
 
   .wsw .panel { position: absolute; top: 42px; right: 0; width: 292px; z-index: 90;
-                background: #232a31; border: 1px solid #3d474f; border-radius: 11px;
-                padding: 15px 16px; box-shadow: 0 18px 44px rgba(0,0,0,.45); color: #e8e4dc; }
+                background: #161b22; border: 1px solid #313b47; border-radius: 11px;
+                padding: 15px 16px; box-shadow: 0 18px 44px rgba(0,0,0,.45); color: #eef2f6; }
   .wsw .panel .who { display: flex; align-items: center; gap: 9px; }
   .wsw .panel .full { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11.5px;
-                      color: #9aa4ae; word-break: break-all; margin: 9px 0 0; line-height: 1.5; }
+                      color: #99a5b3; word-break: break-all; margin: 9px 0 0; line-height: 1.5; }
   .wsw .panel h4 { font: 500 11px/1 ui-monospace, Menlo, Consolas, monospace; letter-spacing: .08em;
-                   text-transform: uppercase; color: #8c96a1; margin: 15px 0 9px; }
+                   text-transform: uppercase; color: #6b7684; margin: 15px 0 9px; }
   .wsw .fig { display: flex; justify-content: space-between; align-items: baseline; padding: 5px 0;
               font-size: 13.5px; }
   .wsw .fig .v { font-family: ui-monospace, Menlo, Consolas, monospace; font-variant-numeric: tabular-nums; }
-  .wsw .fig.net { border-top: 1px solid #333c45; margin-top: 5px; padding-top: 9px; }
-  .wsw .up { color: #5cc07d; } .wsw .down { color: #e0836f; }
-  .wsw .quiet { color: #8c96a1; font-size: 12.5px; line-height: 1.5; margin: 4px 0 0; }
+  .wsw .fig.net { border-top: 1px solid #242c36; margin-top: 5px; padding-top: 9px; }
+  .wsw .up { color: #4ade80; } .wsw .down { color: #fb7185; }
+  .wsw .quiet { color: #6b7684; font-size: 12.5px; line-height: 1.5; margin: 4px 0 0; }
   .wsw .links { display: flex; flex-direction: column; gap: 2px; margin-top: 13px;
-                border-top: 1px solid #333c45; padding-top: 11px; }
+                border-top: 1px solid #242c36; padding-top: 11px; }
   .wsw .links a, .wsw .links button.plain {
-      font-size: 13.5px; color: #e8e4dc; text-decoration: none; padding: 7px 8px; border-radius: 6px;
+      font-size: 13.5px; color: #eef2f6; text-decoration: none; padding: 7px 8px; border-radius: 6px;
       background: none; border: 0; text-align: left; height: auto; cursor: pointer; }
-  .wsw .links a:hover, .wsw .links button.plain:hover { background: #2b333b; }
-  .wsw .links button.plain.off { color: #dd7d6b; }
+  .wsw .links a:hover, .wsw .links button.plain:hover { background: #242c36; }
+  .wsw .links button.plain.off { color: #fb7185; }
 
   .wsw-fixed { position: fixed; top: 16px; right: 18px; z-index: 80; }
   .wsw.wsw-inline { margin-left: 16px; vertical-align: middle; margin-bottom: 10px; }

@@ -97,6 +97,54 @@
   .topbar .clock { font: 12px/1 var(--mono); color: var(--ink-soft); display: flex;
                    align-items: center; gap: 7px; padding: 6px 11px;
                    border: 1px solid var(--line-2); border-radius: 999px; }
+
+  /* ---- ARENA skin, carried from the desk page ---- */
+  :root {
+    --paper: #0e1116; --bg: #0e1116; --bg-2: #161b22;
+    --panel: #161b22; --raised: #1c232c; --field: #0b0e12;
+    --line: #242c36; --line-2: #313b47;
+    --ink: #eef2f6; --ink-soft: #99a5b3; --ink-faint: #6b7684;
+    --hot: #d8ff3e; --hot-dim: #2a3510;
+    --accent: #d8ff3e; --accent-soft: #2a3510;
+    --gain: #4ade80; --loss: #fb7185; --bad: #fb7185;
+    --warn: #fbbf24; --warn-soft: #2a2110;
+  }
+  :root { --desk: #d8ff3e; --carpet: #313b47; }
+  body { background: var(--paper); color: var(--ink); }
+  a { color: var(--hot); }
+
+  .topbar, header { border-bottom: 1px solid var(--line); background: var(--panel); }
+  .mark { font-weight: 800 !important; letter-spacing: .06em; text-transform: uppercase; }
+  .mark em { color: var(--hot) !important; font-style: normal; }
+  nav { font-family: var(--mono); font-size: 11px !important; letter-spacing: .1em;
+        text-transform: uppercase; }
+  nav a { color: var(--ink-faint) !important; }
+  nav a:hover { color: var(--ink) !important; }
+  .clock { color: var(--ink-faint) !important; }
+
+  h1 { font-weight: 800 !important; letter-spacing: -.02em; text-transform: uppercase; }
+  h2 { font-weight: 800 !important; letter-spacing: .1em; text-transform: uppercase;
+       font-size: 13px !important; color: var(--ink-soft); }
+
+  .back { font-family: var(--mono); font-size: 11px !important; letter-spacing: .12em;
+          text-transform: uppercase; color: var(--ink-faint) !important; }
+  .back:hover { color: var(--ink) !important; }
+
+  th, .k, .lab { font-family: var(--mono) !important; letter-spacing: .1em;
+                 text-transform: uppercase; font-size: 10px !important;
+                 color: var(--ink-faint) !important; }
+
+  button { font-weight: 800 !important; letter-spacing: .1em; text-transform: uppercase;
+           font-size: 12px !important; border-radius: 9px;
+           background: var(--hot); color: #10140a; border: 1px solid var(--hot); }
+  button:hover:not(:disabled) { filter: brightness(1.08); }
+  button.ghost { background: transparent; color: var(--ink); border-color: var(--line-2); }
+  button.ghost:hover:not(:disabled) { border-color: var(--hot); color: var(--hot); }
+  button:disabled { opacity: .35; filter: none; }
+
+  .panel { border-radius: 13px; border-color: var(--line); background: var(--panel); }
+  .up { color: var(--gain) !important; } .down { color: var(--loss) !important; }
+
 </style>
 </head>
 <body>

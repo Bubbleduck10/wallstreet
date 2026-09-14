@@ -78,28 +78,28 @@
   const KEY = "ws.tour." + page;
 
   const CSS = `
-  .wst-back { position: fixed; inset: 0; background: rgba(12,15,19,.55); z-index: 900; }
-  .wst-ring { position: absolute; border: 2px solid #4ea36a; border-radius: 10px;
-              box-shadow: 0 0 0 9999px rgba(12,15,19,.55); pointer-events: none;
+  .wst-back { position: fixed; inset: 0; background: rgba(6,8,11,.68); z-index: 900; }
+  .wst-ring { position: absolute; border: 2px solid #d8ff3e; border-radius: 10px;
+              box-shadow: 0 0 0 9999px rgba(6,8,11,.68); pointer-events: none;
               transition: all .22s ease; }
   .wst-bub { position: absolute; z-index: 902; width: 310px; max-width: calc(100vw - 28px);
-             background: #232a31; color: #e8e4dc; border: 1px solid #3d474f; border-radius: 11px;
+             background: #161b22; color: #eef2f6; border: 1px solid #313b47; border-radius: 11px;
              padding: 15px 17px 14px; box-shadow: 0 20px 46px rgba(0,0,0,.5);
              font: 14px/1.55 -apple-system, "Segoe UI", system-ui, sans-serif; }
   .wst-bub h5 { margin: 0 0 6px; font: 600 15px/1.3 inherit; }
-  .wst-bub p { margin: 0; color: #b9c1c9; font-size: 13.5px; }
+  .wst-bub p { margin: 0; color: #99a5b3; font-size: 13.5px; }
   .wst-row { display: flex; align-items: center; gap: 10px; margin-top: 14px; }
-  .wst-row .of { font: 11.5px/1 ui-monospace, Menlo, Consolas, monospace; color: #8c96a1;
+  .wst-row .of { font: 11.5px/1 ui-monospace, Menlo, Consolas, monospace; color: #6b7684;
                  margin-right: auto; }
   .wst-bub button { font: 500 13px/1 inherit; height: 32px; padding: 0 13px; border-radius: 7px;
-                    cursor: pointer; border: 1px solid #3d474f; background: #262d35; color: #e8e4dc; }
-  .wst-bub button.go { background: #d9cdb8; color: #23282e; border-color: #c3b79f; font-weight: 600; }
-  .wst-bub button.skip { border: 0; background: none; color: #8c96a1; padding: 0 4px; }
+                    cursor: pointer; border: 1px solid #313b47; background: #1c232c; color: #eef2f6; }
+  .wst-bub button.go { background: #d8ff3e; color: #10140a; border-color: #d8ff3e; font-weight: 600; }
+  .wst-bub button.skip { border: 0; background: none; color: #6b7684; padding: 0 4px; }
 
   .wst-ask { position: fixed; right: 18px; bottom: 18px; z-index: 60; width: 34px; height: 34px;
-             border-radius: 50%; border: 1px solid #3d474f; background: #262d35; color: #e8e4dc;
+             border-radius: 50%; border: 1px solid #313b47; background: #1c232c; color: #eef2f6;
              cursor: pointer; font: 600 15px/1 -apple-system, system-ui, sans-serif; }
-  .wst-ask:hover { border-color: #55616c; }
+  .wst-ask:hover { border-color: #d8ff3e; }
   @media (prefers-reduced-motion: reduce) { .wst-ring { transition: none; } }`;
 
   let i = 0, back = null, ring = null, bub = null, live = [];
